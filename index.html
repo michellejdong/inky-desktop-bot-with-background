@@ -1,0 +1,2360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inky</title>
+<script type="application/json" id="claude-artifacts-manifest">{"permissions":["overlay","menu-bar","notifications","shortcuts","full-access"]}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#3b2a26; --soft:#9b6c5e; --accent:#E8775C; --line:#f3d6cb; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: Nunito, system-ui, sans-serif; color: var(--ink);
+    background: radial-gradient(circle at 50% 35%, #fff8f2, #fde3d6 70%, #f9d2c2);
+    display: grid; place-items: center; overflow: hidden; user-select: none;
+  }
+  body.float { background: transparent; }
+  #stage { width: 260px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; }
+  body.app #stage { -webkit-app-region: drag; app-region: drag; padding: 34px 0 10px; }
+  body.float { place-items: end center; }
+  body.float #stage { padding: 8px 0 6px; }
+  #panel { order: 1 } #nav { order: 2 } #chat { order: 3 } #suggest { order: 4 } #timerTag { order: 5 } #bubble { order: 6 } #tail { order: 7 } #petWrap { order: 8 } #patHint { order: 9 } #grip { order: 10 }
+  /* opening downward when inky sits near the top of the screen */
+  body.float.down { place-items: start center; }
+  body.down #grip { order: -2 } body.down #timerTag { order: -1 } body.down #petWrap { order: 0 } body.down #patHint { order: 1 }
+  body.down #tail { order: 2; border-top-color: transparent; border-bottom-color: #fff; margin: 0 0 -6px; }
+  body.dark.down #tail { border-bottom-color: #2d3250; }
+  body.down #bubble { order: 3 } body.down #suggest { order: 4 } body.down #chat { order: 5 } body.down #nav { order: 6 } body.down #panel { order: 7 }
+  body.folded #panel, body.folded #nav, body.folded #chat, body.folded #suggest, body.folded #bubble, body.folded #tail { display: none !important; }
+  body.folded.calm #bubble { display: block !important; } body.folded.calm #tail { display: block !important; }
+  #patHint { display: none; font-size: 11px; font-weight: 800; color: #c4927f; margin-top: -6px; }
+  body.folded #patHint.show { display: block; }
+  body.app #stage > *:not(#grip) { -webkit-app-region: no-drag; app-region: no-drag; }
+  #grip { display: none; font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #b98a7c;
+    background: rgba(255,255,255,.8); padding: 2px 12px; border-radius: 999px; cursor: grab; }
+  body.float #grip { display: block; }
+
+  .card { background: #fff; border-radius: 18px; box-shadow: 0 6px 18px rgba(150,80,60,.16); }
+  .bubble { position: relative; padding: 10px 14px; max-width: 250px; min-width: 130px; max-height: 140px; overflow-y: auto;
+    font-size: 14px; line-height: 1.4; user-select: text; white-space: pre-wrap; word-wrap: break-word; }
+  .bubble::-webkit-scrollbar, #panel::-webkit-scrollbar { width: 6px; }
+  .bubble::-webkit-scrollbar-thumb, #panel::-webkit-scrollbar-thumb { background: #f1c9bb; border-radius: 3px; }
+  #you { font-size: 12px; color: #a88579; margin-bottom: 4px; display: none; }
+  #tail { width: 0; height: 0; border: 9px solid transparent; border-top-color: #fff; margin-top: -6px; }
+  #timerTag { display: none; font-size: 12px; font-weight: 800; color: #fff; background: #7FB77E; padding: 2px 10px; border-radius: 999px; }
+  #timerTag.on { display: block; }
+
+  #petWrap { position: relative; width: 170px; height: 170px; cursor: pointer; }
+  #octo3d { display: none; width: 100%; height: 100%; }
+  .has3d #octo3d { display: block; }
+  .has3d #octo { display: none; }
+  #fx { position: absolute; inset: 0; pointer-events: none; display: none; font-weight: 800; }
+  .has3d #fx { display: block; }
+  #fx span { position: absolute; }
+  #fx .z { color: #a88579; animation: riseH 2.4s ease-in infinite; opacity: 0; }
+  #fx .h { color: #FF6F91; animation: riseH 2.4s ease-in infinite; opacity: 0; }
+  #fx .d1 { animation-delay: .8s } #fx .d2 { animation-delay: 1.6s }
+  @keyframes riseH { 0% { opacity: 0; transform: translate(0,0) } 25% { opacity: 1 } 100% { opacity: 0; transform: translate(8px,-26px) } }
+  #fx .dot { width: 9px; height: 9px; border-radius: 50%; background: #fff; border: 1.5px solid #e7b6a6; animation: pulse 1.2s ease-in-out infinite; }
+  #fx .spark { color: #FFC94D; font-size: 18px; animation: twinkle 1s ease-in-out infinite; }
+  #fx .drip { width: 10px; height: 14px; background: #8EC5F2; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; }
+  .spot { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; align-items: center; }
+  .spot a { text-decoration: none; }
+  .spot .chip { font-size: 11.5px; padding: 3px 9px; }
+  .spot .lab { font-size: 11px; font-weight: 800; color: #1DB954; }
+  #octo { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 6px 8px rgba(160,80,60,.18)); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 250px; }
+  .chip { border: 1.5px solid var(--line); background: #fff; color: var(--soft); font: inherit; font-size: 12px; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px; cursor: pointer; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #panel { width: 250px; max-height: 230px; overflow-y: auto; padding: 10px 12px; font-size: 13px; }
+  #panel h4 { margin: 0 0 6px; font-size: 13px; font-weight: 800; color: var(--soft); display: flex; justify-content: space-between; align-items: center; }
+  #panel h4 span { font-weight: 700; font-size: 11px; color: #c4a297; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .mini { flex: 1; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 8px; font: inherit; font-size: 13px; outline: none; min-width: 0; color: var(--ink); }
+  .mini:focus { border-color: var(--accent); }
+  .btn { border: none; background: var(--accent); color: #fff; font: inherit; font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
+  .btn.ghost { background: #fbeee8; color: var(--soft); }
+  .clock { font-size: 34px; font-weight: 800; text-align: center; letter-spacing: 1px; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+  .task { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px dashed #f6e2da; }
+  .task:last-child { border-bottom: none; }
+  .task input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+  .task .t { flex: 1; word-break: break-word; user-select: text; }
+  .task.done .t { text-decoration: line-through; color: #c4a297; }
+  .x { border: none; background: none; color: #d5b2a6; cursor: pointer; font-size: 15px; padding: 0 2px; font-weight: 800; }
+  .x:hover { color: var(--accent); }
+  .muted { color: #b89488; font-size: 12px; }
+  .qi { display: flex; align-items: center; gap: 2px; }
+
+  #chat { display: flex; align-items: center; width: 250px; border-radius: 999px; padding: 4px; }
+  #model { border: none; background: #fbeee8; color: var(--soft); font: inherit; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 6px 2px 6px 8px; outline: none; cursor: pointer; width: 74px; flex: none; }
+  #msg { flex: 1; border: none; outline: none; font: inherit; font-size: 14px; padding: 8px 10px; background: transparent; color: var(--ink); min-width: 0; }
+  #msg::placeholder { color: #c4a297; }
+  #send { border: none; background: var(--accent); color: #fff; font: inherit; font-weight: 800; border-radius: 999px; padding: 8px 13px; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: default; }
+
+  #nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 4px; border-radius: 16px; width: 250px; }
+  .nb { border: none; background: transparent; font: inherit; font-size: 11px; font-weight: 800; color: var(--soft); padding: 5px 0; border-radius: 999px; cursor: pointer; text-decoration: none; white-space: nowrap; text-align: center; }
+  .nb:hover { color: var(--accent); }
+  .nb.on { background: var(--accent); color: #fff; }
+  #wakeNav { color: #E0A21B; } #wakeNav.on { background: #F2B53A; color: #fff; }
+  #sleepNav { color: #7B83D4; } #sleepNav.on { background: #7B83D4; color: #fff; }
+  .hidden { display: none !important; }
+  .iconbtn { flex: none; width: 32px; height: 32px; border: none; border-radius: 999px; background: #fbeee8; color: var(--soft); cursor: pointer; display: grid; place-items: center; padding: 0; margin-right: 4px; }
+  .iconbtn svg { width: 17px; height: 17px; }
+  .iconbtn.on { background: var(--accent); color: #fff; animation: pulseBtn 1.2s ease-in-out infinite; }
+  @keyframes pulseBtn { 0%,100% { box-shadow: 0 0 0 0 rgba(232,119,92,.5) } 50% { box-shadow: 0 0 0 6px rgba(232,119,92,0) } }
+  #spk { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; margin: 0; }
+  #spk svg { width: 14px; height: 14px; }
+  #spk.active { background: var(--accent); color: #fff; }
+  .bubble.hasSpk { padding-right: 34px; }
+  .idea { padding: 5px 0; border-bottom: 1px dashed #f6e2da; display: flex; gap: 6px; align-items: flex-start; }
+  .idea:last-child { border-bottom: none; }
+  .idea .t { flex: 1; word-break: break-word; user-select: text; }
+  .idea .when { display: block; font-size: 10.5px; color: #c4a297; }
+  .jt { width: 100%; resize: none; margin-bottom: 6px; font-family: inherit; display: block; }
+  .sstep { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #f6e2da; cursor: pointer; }
+  .sstep:last-child { border-bottom: none; }
+  .sstep .ic { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #e7c3b6; display: grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; }
+  .sstep.done .ic { background: #9BA8E0; border-color: #9BA8E0; color: #fff; }
+  .sstep.done .tx { color: #b3a6ad; text-decoration: line-through; }
+  .sstep.cur .ic { border-color: var(--accent); }
+  .sstep.cur .tx { font-weight: 800; }
+  .jentry { font-size: 12px; padding: 6px 0; border-bottom: 1px dashed #f6e2da; white-space: pre-wrap; user-select: text; }
+  body.dark .sstep, body.dark .jentry { border-bottom-color: #3b4060; }
+  .lbl { flex: 1; font-weight: 700; color: var(--ink); }
+  .sel { flex: none; width: 112px; padding: 5px 6px; background: #fff; cursor: pointer; }
+  .setrow { margin-bottom: 8px; }
+  #petWrap { touch-action: none; }
+  #petWrap.grabbing { cursor: grabbing; }
+  #backside { visibility: hidden; }
+  #octo.back #backside { visibility: visible; }
+  #octo.back #squish [data-moods], #octo.back #blink, #octo.back .cheek { visibility: hidden; }
+  /* calm mode */
+  body:not(.float) { transition: background 2s; }
+  body.calm:not(.float) { background: radial-gradient(circle at 50% 35%, #f4f1ff, #dfe3fb 65%, #cfd9f2); }
+  body.calm #bodyall { animation: calmFloat 7s ease-in-out infinite; }
+  @keyframes calmFloat { 0%,100% { transform: translateY(0) rotate(-1.5deg) } 50% { transform: translateY(-9px) rotate(1.5deg) } }
+  body.calm .tent { animation-duration: 6.5s; }
+  body.calm #blink { animation: none; }
+  body.calm #timerTag { background: #9BA8E0; }
+  .floater.slow { animation-duration: 4.5s; color: #9fc3ec; }
+  #calmVol { width: 112px; accent-color: var(--accent); }
+  #octo.talking #bodyall { animation: hop .45s ease-in-out infinite; }
+
+  /* time of day */
+  body { transition: background 1.5s, color .6s; }
+  body.t-morning:not(.float):not(.calm) { background: radial-gradient(circle at 50% 30%, #fffdf3, #ffefd0 65%, #ffe2b8); }
+  body.t-evening:not(.float):not(.calm) { background: radial-gradient(circle at 50% 30%, #fff0e6, #f8cbbd 60%, #e7bcd4); }
+  body.dark:not(.float) { background: radial-gradient(circle at 50% 30%, #3a3f60, #262a45 65%, #1b1e33); }
+  body.dark:not(.float)::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .7;
+    background-image: radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent), radial-gradient(1px 1px at 30% 8%, #fff, transparent), radial-gradient(1.5px 1.5px at 78% 14%, #fff, transparent), radial-gradient(1px 1px at 88% 40%, #fff, transparent), radial-gradient(1px 1px at 8% 60%, #fff, transparent), radial-gradient(1.5px 1.5px at 62% 6%, #ffe9a8, transparent), radial-gradient(1px 1px at 92% 75%, #fff, transparent), radial-gradient(1px 1px at 20% 85%, #fff, transparent); }
+  body.dark { --ink: #f3e7e2; --soft: #d4b2a5; --line: #454b6b; color: #f3e7e2; }
+  body.dark .card, body.dark .chip, body.dark .tbtn { background: #2d3250; color: #f3e7e2; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  body.dark .chip { border-color: #454b6b; color: #d4b2a5; }
+  body.dark .chip.go { background: var(--accent); color: #fff; border-color: var(--accent); }
+  body.dark #tail { border-top-color: #2d3250; }
+  body.dark .mini, body.dark .sel { background: #252a44; color: #f3e7e2; border-color: #454b6b; }
+  body.dark .btn.ghost, body.dark #model, body.dark .iconbtn:not(.on):not(.active) { background: #3a3f62; color: #e2c3b7; }
+  body.dark #msg { color: #f3e7e2; } body.dark #msg::placeholder, body.dark .muted, body.dark #you, body.dark #panel h4 span { color: #9c8f9a; }
+  body.dark .task, body.dark .idea { border-bottom-color: #3b4060; }
+  body.dark #grip, body.dark #patHint { background: rgba(45,50,80,.85); color: #d4b2a5; }
+  body.dark #patHint { background: none; }
+  body.dark #fx .dot { background: #2d3250; }
+  /* animations */
+  #bodyall { animation: bob 3s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+  #octo[data-mood="excited"] #bodyall { animation: hop .55s ease-in-out infinite; }
+  @keyframes hop { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12px) } }
+  #octo[data-mood="sleepy"] #bodyall, #octo.focusing #bodyall { animation-duration: 5s; }
+  .tent { transform-box: fill-box; transform-origin: 50% 0%; animation: wig 2.4s ease-in-out infinite; }
+  .tent:nth-child(2) { animation-delay: -.4s } .tent:nth-child(3) { animation-delay: -.8s }
+  .tent:nth-child(4) { animation-delay: -1.2s } .tent:nth-child(5) { animation-delay: -1.6s } .tent:nth-child(6) { animation-delay: -2s }
+  @keyframes wig { 0%,100% { transform: rotate(-6deg) } 50% { transform: rotate(6deg) } }
+  #octo[data-mood="sleepy"] .tent { animation-duration: 5s; }
+  #blink { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
+  @keyframes blink { 0%,92%,100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
+  #look { transition: transform .15s ease-out; }
+  #squish { transform-box: fill-box; transform-origin: 50% 100%; }
+  @keyframes squish { 0% { transform: scale(1) } 30% { transform: scale(1.12,.86) } 60% { transform: scale(.95,1.07) } 100% { transform: scale(1) } }
+  .rise { transform-box: fill-box; animation: rise 2.4s ease-in infinite; }
+  .rise.d1 { animation-delay: .8s } .rise.d2 { animation-delay: 1.6s }
+  @keyframes rise { 0% { opacity: 0; transform: translate(0,0) } 25% { opacity: 1 } 100% { opacity: 0; transform: translate(8px,-26px) } }
+  .pulse { animation: pulse 1.2s ease-in-out infinite; } .pulse.d1 { animation-delay: .2s } .pulse.d2 { animation-delay: .4s }
+  @keyframes pulse { 0%,100% { opacity: .25 } 50% { opacity: 1 } }
+  .twinkle { transform-box: fill-box; transform-origin: center; animation: twinkle 1s ease-in-out infinite; }
+  .twinkle.d1 { animation-delay: .5s }
+  @keyframes twinkle { 0%,100% { transform: scale(.5); opacity: .4 } 50% { transform: scale(1.1); opacity: 1 } }
+  .drip { animation: drip 2s ease-in infinite; }
+  @keyframes drip { 0% { opacity: 0; transform: translateY(-4px) } 30% { opacity: 1 } 100% { opacity: 0; transform: translateY(8px) } }
+  /* click reactions */
+  .r-squish #squish { animation: squish .45s ease-out; }
+  .r-jump #squish { animation: rJump .7s cubic-bezier(.3,.7,.4,1); }
+  @keyframes rJump { 0% { transform: scale(1) } 15% { transform: scale(1.1,.85) } 45% { transform: translateY(-46px) scale(.92,1.1) } 80% { transform: translateY(0) scale(1.12,.86) } 100% { transform: scale(1) } }
+  .r-spin #squish { transform-origin: 50% 55%; animation: rSpin .8s ease-in-out; }
+  @keyframes rSpin { to { transform: rotate(360deg) } }
+  .r-flip #squish { transform-origin: 50% 55%; animation: rFlip .8s ease-in-out; }
+  @keyframes rFlip { 0%,100% { transform: scaleX(1) } 50% { transform: scaleX(-1) } }
+  .r-wiggle #squish { transform-origin: 50% 80%; animation: rWiggle .6s ease-in-out; }
+  @keyframes rWiggle { 0%,100% { transform: rotate(0) } 20% { transform: rotate(-12deg) } 40% { transform: rotate(10deg) } 60% { transform: rotate(-8deg) } 80% { transform: rotate(5deg) } }
+  .r-grow #squish { animation: rGrow 1s ease-in-out; }
+  @keyframes rGrow { 0%,100% { transform: scale(1) } 35%,65% { transform: scale(1.3) } }
+  .r-shy #squish { animation: rShy 1.4s ease-in-out; }
+  @keyframes rShy { 0%,100% { transform: scale(1) } 25%,75% { transform: scale(.92,.82) } }
+  .cheek { transform-box: fill-box; transform-origin: center; }
+  .r-shy .cheek, .r-love .cheek { animation: blush 1.4s ease-in-out; }
+  @keyframes blush { 0%,100% { transform: scale(1) } 30%,70% { transform: scale(1.6); opacity: .9 } }
+  .r-rainbow #octo { animation: rRainbow 1.4s linear; }
+  @keyframes rRainbow { from { filter: hue-rotate(0) drop-shadow(0 6px 8px rgba(160,80,60,.18)) } to { filter: hue-rotate(360deg) drop-shadow(0 6px 8px rgba(160,80,60,.18)) } }
+  .r-frenzy .tent { animation-duration: .25s !important; }
+  .r-frenzy #squish { animation: rWiggle .5s ease-in-out 2; transform-origin: 50% 80%; }
+  .r-ink #squish { animation: rInk .7s ease-out; }
+  @keyframes rInk { 0%,100% { transform: translateY(0) } 20% { transform: translateY(6px) scale(1.08,.9) } 45% { transform: translateY(-14px) } }
+  .r-peek #squish { animation: rPeek 1.3s ease-in-out; }
+  @keyframes rPeek { 0% { transform: translateY(0); opacity: 1 } 30%,60% { transform: translateY(40px) scaleY(.6); opacity: 0 } 85% { transform: translateY(-10px); opacity: 1 } 100% { transform: translateY(0) } }
+  .r-dance #squish { transform-origin: 50% 90%; animation: rDance 1.6s ease-in-out; }
+  @keyframes rDance { 0%,100% { transform: rotate(0) translateY(0) } 12.5%,62.5% { transform: rotate(-10deg) translateY(-8px) } 37.5%,87.5% { transform: rotate(10deg) translateY(-8px) } 25%,50%,75% { transform: rotate(0) translateY(0) } }
+  .r-dizzy #squish { transform-origin: 50% 70%; animation: rDizzy 1.8s ease-in-out; }
+  @keyframes rDizzy { 0%,100% { transform: rotate(0) } 15% { transform: rotate(14deg) translateX(6px) } 35% { transform: rotate(-12deg) translateX(-6px) } 55% { transform: rotate(9deg) translateX(4px) } 75% { transform: rotate(-5deg) } }
+  #bloom { transform-box: fill-box; transform-origin: center; }
+  .r-bloom #bloom { animation: rBloom 3s ease-in-out; }
+  @keyframes rBloom { 0% { opacity: 0; transform: scale(0) rotate(-90deg) } 20% { opacity: 1; transform: scale(1.25) rotate(0) } 30%,85% { opacity: 1; transform: scale(1) } 100% { opacity: 0; transform: scale(0) } }
+  .r-bloom #squish { animation: rGrow 1s ease-in-out; }
+  .r-gold #octo { animation: rGold 2.2s ease-in-out; }
+  @keyframes rGold { 0%,100% { filter: drop-shadow(0 6px 8px rgba(160,80,60,.18)) } 20%,75% { filter: sepia(1) saturate(3.5) hue-rotate(-12deg) brightness(1.12) drop-shadow(0 0 14px rgba(255,200,60,.9)) } }
+  .r-gold #squish { animation: rSpin .9s ease-in-out; transform-origin: 50% 55%; }
+  .floater { position: absolute; pointer-events: none; font-size: 18px; color: #ff6f91; font-weight: 800; animation: floatUp 1.3s ease-out forwards; }
+  @keyframes floatUp { 0% { opacity: 0; transform: translate(0,0) scale(.6) } 20% { opacity: 1 } 100% { opacity: 0; transform: translate(var(--dx), -70px) scale(1.2) } }
+</style>
+</head>
+<body class="folded">
+<div id="stage">
+  <div id="grip" title="drag here to move inky">• • • drag to move • • •</div>
+  <div id="timerTag"></div>
+  <div class="bubble card" id="bubble"><button id="spk" class="iconbtn hidden" type="button" title="voice replies: off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/><path id="spkWaves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path id="spkMute" d="M16 9l6 6M22 9l-6 6"/></svg></button><div id="you"></div><div id="say">hi hi! i'm inky~ talk to me, or give me a pat.</div></div>
+  <div id="tail"></div>
+  <div id="petWrap" title="pat inky · drag to spin">
+    <canvas id="octo3d" width="340" height="340"></canvas>
+    <div id="fx">
+      <span data-moods="thinking" class="dot" style="right:22px;top:30px"></span><span data-moods="thinking" class="dot d1" style="right:12px;top:16px;width:12px;height:12px"></span><span data-moods="thinking" class="dot d2" style="right:0;top:0;width:15px;height:15px"></span>
+      <span data-moods="sleepy" class="z" style="right:26px;top:34px;font-size:14px">z</span><span data-moods="sleepy" class="z d1" style="right:16px;top:24px;font-size:18px">z</span><span data-moods="sleepy" class="z d2" style="right:4px;top:12px;font-size:22px">Z</span>
+      <span data-moods="love" class="h" style="right:20px;top:26px;font-size:18px">♥</span><span data-moods="love" class="h d1" style="left:18px;top:30px;font-size:15px">♥</span>
+      <span data-moods="excited" class="spark" style="left:14px;top:30px">✦</span><span data-moods="excited" class="spark d1" style="right:14px;top:20px;font-size:14px">✦</span>
+      <span data-moods="sad" class="drip" style="right:30px;top:44px;animation:drip 2s ease-in infinite"></span>
+    </div>
+<svg id="octo" viewBox="0 0 200 200" data-mood="happy" aria-label="Inky the octopus">
+      <ellipse cx="100" cy="192" rx="46" ry="6" fill="#c9806b" opacity=".18"/>
+      <g id="bodyall"><g id="squish">
+        <g id="tents" fill="none" stroke="#E58A70" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+          <path class="tent" d="M66 124 C52 140 38 150 40 166 C41 176 52 176 52 168"/>
+          <path class="tent" d="M80 132 C76 150 66 162 70 176 C73 184 82 180 79 173"/>
+          <path class="tent" d="M95 136 C95 154 90 166 94 178 C93 186 86 184 88 178"/>
+          <path class="tent" d="M105 136 C105 154 110 166 106 178 C107 186 114 184 112 178"/>
+          <path class="tent" d="M120 132 C124 150 134 162 130 176 C127 184 118 180 121 173"/>
+          <path class="tent" d="M134 124 C148 140 162 150 160 166 C159 176 148 176 148 168"/>
+        </g>
+        <!-- sprout -->
+        <path d="M100 42 C101 34 99 28 101 22" stroke="#7FB77E" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="93" cy="22" rx="8" ry="4.5" fill="#94CC8F" transform="rotate(-25 93 22)"/>
+        <ellipse cx="109" cy="20" rx="8" ry="4.5" fill="#A6D89F" transform="rotate(25 109 20)"/>
+        <g id="bloom" opacity="0">
+          <circle cx="100" cy="11" r="5.5" fill="#FFB3C7"/><circle cx="108.5" cy="17" r="5.5" fill="#FFB3C7"/><circle cx="105" cy="26" r="5.5" fill="#FFB3C7"/><circle cx="95" cy="26" r="5.5" fill="#FFB3C7"/><circle cx="91.5" cy="17" r="5.5" fill="#FFB3C7"/><circle cx="100" cy="19" r="4.5" fill="#FFD66B"/>
+        </g>
+        <!-- head -->
+        <ellipse cx="100" cy="92" rx="60" ry="53" fill="#F4A38A"/>
+        <ellipse cx="78" cy="64" rx="15" ry="8" fill="#fff" opacity=".45" transform="rotate(-25 78 64)"/>
+        <circle cx="122" cy="58" r="3.5" fill="#fff" opacity=".4"/>
+        <g id="backside" fill="#E58A70" opacity=".55">
+          <circle cx="78" cy="96" r="7"/><circle cx="117" cy="84" r="9"/><circle cx="101" cy="116" r="5"/><circle cx="135" cy="108" r="4.5"/><circle cx="66" cy="118" r="4"/><circle cx="92" cy="70" r="4"/>
+        </g>
+        <!-- cheeks -->
+        <ellipse class="cheek" cx="64" cy="110" rx="9" ry="5.5" fill="#FF7A9A" opacity=".5"/>
+        <ellipse class="cheek" cx="136" cy="110" rx="9" ry="5.5" fill="#FF7A9A" opacity=".5"/>
+        <!-- eyes -->
+        <g id="blink"><g id="look">
+          <g data-moods="neutral excited thinking sad">
+            <ellipse cx="80" cy="95" rx="7.5" ry="9.5" fill="#3b2a26"/><circle cx="82.5" cy="91" r="3" fill="#fff"/><circle cx="77.5" cy="99" r="1.4" fill="#fff"/>
+            <ellipse cx="120" cy="95" rx="7.5" ry="9.5" fill="#3b2a26"/><circle cx="122.5" cy="91" r="3" fill="#fff"/><circle cx="117.5" cy="99" r="1.4" fill="#fff"/>
+          </g>
+          <g data-moods="surprised">
+            <circle cx="80" cy="94" r="11" fill="#3b2a26"/><circle cx="83" cy="90" r="3.5" fill="#fff"/>
+            <circle cx="120" cy="94" r="11" fill="#3b2a26"/><circle cx="123" cy="90" r="3.5" fill="#fff"/>
+          </g>
+        </g></g>
+        <g data-moods="happy" fill="none" stroke="#3b2a26" stroke-width="4" stroke-linecap="round">
+          <path d="M72 98 Q80 87 88 98"/><path d="M112 98 Q120 87 128 98"/>
+        </g>
+        <g data-moods="sleepy calm" fill="none" stroke="#3b2a26" stroke-width="3.5" stroke-linecap="round">
+          <path d="M72 95 Q80 101 88 95"/><path d="M112 95 Q120 101 128 95"/>
+        </g>
+        <g data-moods="love" fill="#E8456B">
+          <path d="M80 104 C70 97 70 87 76 87 C79 87 80 90 80 91 C80 90 81 87 84 87 C90 87 90 97 80 104 Z"/>
+          <path d="M120 104 C110 97 110 87 116 87 C119 87 120 90 120 91 C120 90 121 87 124 87 C130 87 130 97 120 104 Z"/>
+        </g>
+        <g data-moods="sad" fill="none" stroke="#3b2a26" stroke-width="2.5" stroke-linecap="round">
+          <path d="M70 82 L86 79"/><path d="M130 82 L114 79"/>
+        </g>
+        <!-- mouths -->
+        <path data-moods="neutral love calm" d="M93 111 Q100 118 107 111" fill="none" stroke="#3b2a26" stroke-width="3.5" stroke-linecap="round"/>
+        <path data-moods="happy excited" d="M91 110 Q100 124 109 110 Z" fill="#8a3b35" stroke="#3b2a26" stroke-width="2.5" stroke-linejoin="round"/>
+        <path data-moods="sad" d="M92 116 Q96 112 100 116 Q104 120 108 116" fill="none" stroke="#3b2a26" stroke-width="3" stroke-linecap="round"/>
+        <circle data-moods="surprised sleepy" cx="100" cy="114" r="4" fill="#3b2a26"/>
+        <path data-moods="thinking" d="M95 114 Q101 111 106 113" fill="none" stroke="#3b2a26" stroke-width="3" stroke-linecap="round"/>
+      </g></g>
+      <!-- extras -->
+      <g data-moods="thinking" fill="#fff" stroke="#e7b6a6" stroke-width="1.5">
+        <circle class="pulse" cx="150" cy="44" r="4"/><circle class="pulse d1" cx="162" cy="32" r="5.5"/><circle class="pulse d2" cx="177" cy="18" r="7"/>
+      </g>
+      <g data-moods="sleepy" fill="#a88579" font-family="Nunito, sans-serif" font-weight="800">
+        <text class="rise" x="148" y="52" font-size="14">z</text><text class="rise d1" x="158" y="44" font-size="18">z</text><text class="rise d2" x="170" y="36" font-size="22">Z</text>
+      </g>
+      <g data-moods="love" fill="#FF6F91">
+        <path class="rise" d="M156 48 c-6 -4 -6 -10 -2 -10 c2 0 2 2 2 2 c0 0 0 -2 2 -2 c4 0 4 6 -2 10z"/>
+        <path class="rise d1" d="M44 52 c-6 -4 -6 -10 -2 -10 c2 0 2 2 2 2 c0 0 0 -2 2 -2 c4 0 4 6 -2 10z"/>
+      </g>
+      <g data-moods="excited" fill="#FFC94D">
+        <path class="twinkle" d="M36 52 l3 -9 l3 9 l9 3 l-9 3 l-3 9 l-3 -9 l-9 -3z"/>
+        <path class="twinkle d1" d="M160 40 l2.5 -7 l2.5 7 l7 2.5 l-7 2.5 l-2.5 7 l-2.5 -7 l-7 -2.5z"/>
+      </g>
+      <path data-moods="sad" class="drip" d="M150 66 C150 66 144 74 144 78 A6 6 0 0 0 156 78 C156 74 150 66 150 66Z" fill="#8EC5F2"/>
+    </svg>
+  </div>
+  <div id="patHint">pat me ♡</div>
+  <div class="chips" id="suggest"></div>
+
+  <div id="panel" class="card hidden">
+    <!-- quick -->
+    <div data-panel="quick">
+      <h4>hand off to another bot</h4>
+      <div class="row setrow">
+        <select class="mini sel" id="botSel" style="width:118px"><optgroup label="on the web"><option value="claude">Claude</option><option value="codex">Codex</option><option value="chatgpt">ChatGPT</option><option value="gemini">Gemini</option></optgroup><optgroup label="on this Mac" id="localBots"></optgroup></select>
+        <button class="btn" id="handoffBtn" type="button">write the prompt</button>
+      </div>
+      <p class="muted" style="margin:0 0 6px" id="botHelp">inky turns your message box (or this chat) into a prompt, then you copy it and open the bot.</p>
+      <div class="row hidden" id="findBotsRow" style="margin-bottom:10px"><button class="btn ghost" id="findBots" type="button">find bots on my Mac</button></div>
+      <h4>quick instructions <span>tap to send</span></h4>
+      <div class="chips" id="quickList" style="justify-content:flex-start"></div>
+      <div class="row" style="margin-top:8px">
+        <input class="mini" id="quickNew" placeholder="add your own…" maxlength="120">
+        <button class="btn" id="quickAdd" type="button">add</button>
+      </div>
+    </div>
+    <!-- focus -->
+    <div data-panel="focus">
+      <h4>focus time <span id="focusCount"></span></h4>
+      <div class="clock" id="clock">25:00</div>
+      <div class="row" style="justify-content:center;margin-bottom:6px" id="presets">
+        <button class="btn ghost" data-min="15" type="button">15m</button>
+        <button class="btn ghost" data-min="25" type="button">25m</button>
+        <button class="btn ghost" data-min="50" type="button">50m</button>
+        <button class="btn ghost" data-min="5" data-break="1" type="button">break</button>
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="btn" id="fStart" type="button">start</button>
+        <button class="btn ghost" id="fStop" type="button">stop</button>
+      </div>
+      <div class="row setrow" style="margin-top:8px"><span class="lbl">focus music</span>
+        <select class="mini sel" id="focusSound"><option value="none">none</option><option value="spotify">my Spotify (Mac)</option><option value="lofi">lo-fi beats</option><option value="wake">sunny beats</option><option value="lofichill">lo-fi chill</option><option value="lofirain">lo-fi + rain</option><option value="piano">warm piano</option><option value="brown">brown noise</option><option value="rain">soft rain</option><option value="ocean">ocean waves</option><option value="forest">forest</option><option value="fire">crackling fireplace</option><option value="pads">dreamy pads</option><option value="space">space drift</option></select></div>
+      <div class="row setrow"><span class="lbl">volume</span><input type="range" id="focusVol" min="0" max="100" value="45" style="width:112px;accent-color:var(--accent)"></div>
+      <div class="spot" data-spot="focus"></div>
+      <div class="row" style="margin-top:8px">
+        <input class="mini" id="focusGoal" placeholder="what are you focusing on? (optional)" maxlength="100">
+      </div>
+    </div>
+    <!-- tasks -->
+    <div data-panel="tasks">
+      <h4>tasks <span id="doneCount"></span></h4>
+      <div class="row" style="margin-bottom:6px">
+        <input class="mini" id="taskNew" placeholder="add a task…" maxlength="140">
+        <button class="btn" id="taskAdd" type="button">add</button>
+      </div>
+      <div id="taskList"></div>
+      <div class="row" style="margin-top:6px;justify-content:flex-end">
+        <button class="btn ghost" id="taskClear" type="button">clear finished</button>
+      </div>
+    </div>
+    <!-- ideas -->
+    <div data-panel="ideas">
+      <h4>ideas <span id="ideaCount"></span></h4>
+      <div class="row setrow">
+        <input class="mini" id="ideaNew" placeholder="quick idea…" maxlength="500">
+        <button class="iconbtn hidden" id="ideaMic" type="button" title="say your idea"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" stroke="none"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+        <button class="btn" id="ideaAdd" type="button">save</button>
+      </div>
+      <div id="ideaList"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:6px">
+        <button class="btn ghost" id="ideaOrganize" type="button">organize with inky</button>
+        <button class="btn ghost" id="ideaCopy" type="button">copy all</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0">tip: type "idea: …" in the chat box to save one fast.</p>
+    </div>
+    <!-- remind -->
+    <div data-panel="remind">
+      <h4>reminders <span id="standCount"></span></h4>
+      <div class="row setrow"><span class="lbl">stand up &amp; stretch</span>
+        <select class="mini sel" id="standEvery"><option value="0">off</option><option value="30">every 30 min</option><option value="45">every 45 min</option><option value="60">every hour</option><option value="90">every 90 min</option></select></div>
+      <div class="row setrow"><span class="lbl">nudge me about tasks</span>
+        <select class="mini sel" id="taskEvery"><option value="0">off</option><option value="30">every 30 min</option><option value="60">every hour</option><option value="120">every 2 hours</option></select></div>
+      <p class="muted" id="nextRem" style="margin:0 0 8px"></p>
+      <div class="row"><button class="btn ghost" id="testStand" type="button">stand-up reminder now</button><button class="btn ghost" id="testTask" type="button">task check-in now</button></div>
+      <p class="muted" style="margin:8px 0 0">stand-ups wait until a focus session ends. reminders run while inky is open.</p>
+    </div>
+    <!-- calm -->
+    <div data-panel="calm">
+      <h4>calm time <span id="calmCount"></span></h4>
+      <div class="row setrow"><span class="lbl">sound</span>
+        <select class="mini sel" id="calmSound"><option value="spotify">my Spotify (Mac)</option><option value="ocean">ocean waves</option><option value="lofichill">lo-fi chill</option><option value="lofirain">lo-fi + rain</option><option value="piano">warm piano</option><option value="musicbox">music box</option><option value="pads">dreamy pads</option><option value="space">space drift</option><option value="rain">soft rain</option><option value="forest">forest</option><option value="fire">crackling fireplace</option><option value="night">night crickets</option><option value="bowls">singing bowls</option><option value="none">silence</option></select></div>
+      <div class="row setrow"><span class="lbl">breathing</span>
+        <select class="mini sel" id="calmBreath"><option value="446">calm 4·4·6</option><option value="box">box 4·4·4·4</option><option value="478">sleepy 4·7·8</option><option value="free">no guide, just float</option></select></div>
+      <div class="row setrow"><span class="lbl">length</span>
+        <select class="mini sel" id="calmLen"><option value="3">3 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="0">until i stop</option></select></div>
+      <div class="row setrow"><span class="lbl">volume</span><input type="range" id="calmVol" min="0" max="100" value="55"></div>
+      <div class="row" style="justify-content:center"><button class="btn" id="calmStart" type="button">begin</button></div>
+      <div class="spot" data-spot="calm"></div>
+      <div class="row" style="justify-content:center;margin-top:10px"><button class="btn ghost" id="toSleep" type="button">☾ sleep routine</button></div>
+    </div>
+    <!-- morning -->
+    <div data-panel="morning">
+      <h4>morning routine <span id="mornNote"></span></h4>
+      <div class="row setrow"><span class="lbl">wake-up music</span>
+        <select class="mini sel" id="mornSound"><option value="wake">sunny beats</option><option value="spotify">my Spotify (Mac)</option><option value="lofi">lo-fi beats</option><option value="piano">warm piano</option><option value="musicbox">music box</option><option value="forest">forest birds</option><option value="none">silence</option></select></div>
+      <div id="mornSteps"></div>
+      <div class="row" style="justify-content:center;margin-top:8px"><button class="btn" id="mornStart" type="button">start morning routine</button></div>
+      <div class="spot" data-spot="morning"></div>
+    </div>
+    <!-- sleep -->
+    <div data-panel="sleep">
+      <h4>sleep routine <span id="sleepNote"></span></h4>
+      <div class="row setrow"><span class="lbl">sleep sound</span>
+        <select class="mini sel" id="sleepSound"><option value="spotify">my Spotify (Mac)</option><option value="night">night crickets</option><option value="musicbox">music box</option><option value="piano">warm piano</option><option value="lofichill">lo-fi chill</option><option value="fire">crackling fireplace</option><option value="rain">soft rain</option><option value="ocean">ocean waves</option><option value="space">space drift</option><option value="pads">dreamy pads</option><option value="none">silence</option></select></div>
+      <div class="row setrow"><span class="lbl">music stops after</span>
+        <select class="mini sel" id="sleepTimer"><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option><option value="0">keep playing</option></select></div>
+      <div id="sleepSteps"></div>
+      <div id="journal" class="hidden">
+        <textarea class="mini jt" id="j1" rows="2" placeholder="one good thing about today…"></textarea>
+        <textarea class="mini jt" id="j2" rows="2" placeholder="anything on your mind? set it down here…"></textarea>
+        <textarea class="mini jt" id="j3" rows="2" placeholder="first thing tomorrow…"></textarea>
+        <div class="row"><button class="btn" id="jSave" type="button">save &amp; continue</button><button class="btn ghost" id="jSkip" type="button">skip</button></div>
+      </div>
+      <div class="row" style="justify-content:center;margin-top:8px"><button class="btn" id="sleepStart" type="button">start sleep routine</button></div>
+      <details id="jPast" style="margin-top:8px"><summary class="muted" style="cursor:pointer">past journal entries</summary><div id="jList"></div>
+        <button class="btn ghost" id="jCopy" type="button" style="margin-top:6px">copy all</button></details>
+    </div>
+    <!-- more -->
+    <div data-panel="more">
+      <h4>more</h4>
+      <div class="chips" style="justify-content:flex-start">
+        <a class="chip go" href="https://claude.ai/new" target="_blank" rel="noopener" style="text-decoration:none">open claude ↗</a>
+        <button class="chip go hidden" id="installBtn" type="button">install inky as a desktop app</button>
+        <button class="chip go hidden" id="setupBtn" type="button">set me up: float + menu bar + alerts</button>
+        <button class="chip hidden" id="manageBtn" type="button">permissions</button>
+        <button class="chip hidden" id="hideBtn" type="button">tuck away (bring back from menu bar)</button>
+        <button class="chip" id="clearBtn" type="button">fresh chat</button>
+      </div>
+      <div class="row setrow" style="margin-top:10px"><span class="lbl">inky's look</span>
+        <select class="mini sel" id="lookSel"><option value="auto">follow the clock</option><option value="morning">morning</option><option value="afternoon">afternoon</option><option value="evening">evening</option></select></div>
+      <div class="row setrow"><span class="lbl">dark mode</span>
+        <select class="mini sel" id="themeSel"><option value="auto">after sunset</option><option value="light">always light</option><option value="dark">always dark</option></select></div>
+      <div class="row setrow hidden" id="moveRow" style="margin-top:10px"><span class="lbl">move inky</span>
+        <button class="btn ghost" data-place="top_left" type="button" title="top left">↖</button><button class="btn ghost" data-place="top_right" type="button" title="top right">↗</button><button class="btn ghost" data-place="center" type="button" title="center">◎</button><button class="btn ghost" data-place="bottom_left" type="button" title="bottom left">↙</button><button class="btn ghost" data-place="bottom_right" type="button" title="bottom right">↘</button></div>
+      <div class="row setrow" style="margin-top:10px"><input class="mini" id="spotUrl" placeholder="paste your Spotify playlist link"><button class="btn ghost" id="spotSave" type="button">save</button></div>
+      <div class="row setrow hidden" id="voiceRow" style="margin-top:10px"><span class="lbl">inky's voice</span>
+        <select class="mini sel" id="voiceSel" style="width:96px"><option value="airy">airy</option><option value="buttery">buttery</option><option value="glassy">glassy</option><option value="rounded">rounded</option></select>
+        <button class="btn ghost" id="voiceTest" type="button">test</button></div>
+      <p class="muted" id="setupNote" style="margin:8px 0 0">Drag Inky to spin it around, double-click to fold it back. Shortcut once set up: ⌥⇧I to summon Inky. ⌘Q quits.</p>
+    </div>
+  </div>
+
+  <form id="chat" class="card" autocomplete="off">
+    <select id="model" title="which brain inky uses">
+      <option value="tier:quick">quick</option>
+      <option value="tier:default">balanced</option>
+      <option value="tier:complex">deep</option>
+      <option value="model:claude-haiku-4-5">haiku 4.5</option>
+      <option value="model:claude-sonnet-5-5">sonnet 5.5</option>
+      <option value="model:claude-opus-5-5">opus 5.5</option>
+    </select>
+    <input id="msg" placeholder="ask inky anything…" maxlength="1500">
+    <button id="mic" class="iconbtn hidden" type="button" title="talk to inky"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" stroke="none"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+    <button id="send" type="submit">send</button>
+  </form>
+
+  <nav id="nav" class="card">
+    <button class="nb" data-tab="quick" type="button">quick</button>
+    <button class="nb" data-tab="focus" type="button">focus</button>
+    <button class="nb" data-tab="tasks" type="button">tasks</button>
+    <button class="nb" data-tab="ideas" type="button">ideas</button>
+    <button class="nb" data-tab="remind" type="button">remind</button>
+    <button class="nb" data-tab="calm" type="button">calm</button>
+    <button class="nb" id="wakeNav" type="button">☀ wake</button>
+    <button class="nb" id="sleepNav" type="button">☾ sleep</button>
+    <a class="nb" href="https://claude.ai/new" target="_blank" rel="noopener">claude ↗</a>
+    <button class="nb" data-tab="more" type="button">more</button>
+  </nav>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const octo = $('octo');
+const MOODS = ['calm', 'happy','excited','love','thinking','sad','sleepy','surprised','neutral'];
+let lookX = 0, lookY = 0;
+const calm = { running: false };
+const sleep = { running: false, step: 0, done: {}, asleep: false };
+const morn = { running: false, step: 0, done: {} };
+let mood = 'happy', busy = false, lastActive = Date.now(), sampleFn = null;
+let desktop = null, hasTray = false, canNotify = false;
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('inky-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('inky-' + k, JSON.stringify(v)); } catch {} }
+};
+
+/* ---------- folding: just inky until you pat it ---------- */
+let folded = true, lastUI = Date.now(), fitT, openDown = false;
+// open the menus downward when inky sits in the top part of the screen, upward otherwise
+async function updateDirection() {
+  if (!desktop?.window || !document.body.classList.contains('float')) return;
+  try {
+    const b = await desktop.window.getBounds();
+    let area = { y: screen.availTop || 0, height: screen.availHeight };
+    try {
+      const ds = await desktop.screen.getAllDisplays(), cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      const d = ds.find(d => cx >= d.bounds.x && cx < d.bounds.x + d.bounds.width && cy >= d.bounds.y && cy < d.bounds.y + d.bounds.height);
+      if (d) area = d.workArea;
+    } catch {}
+    const inkyY = openDown ? b.y + 110 : b.y + b.height - 110;
+    const down = inkyY < area.y + area.height * .45;
+    if (down !== openDown) { openDown = down; document.body.classList.toggle('down', down); fitWindow(); }
+  } catch {}
+}
+setInterval(() => { if (folded) updateDirection(); }, 1500);
+function setFolded(f) {
+  if (folded === f) return;
+  folded = f; document.body.classList.toggle('folded', f);
+  if (!f) lastUI = Date.now();
+  fitWindow();
+}
+function unfold() { setFolded(false); lastUI = Date.now(); }
+function fitWindow() {
+  clearTimeout(fitT);
+  fitT = setTimeout(() => {
+    if (!desktop?.window || !document.body.classList.contains('float')) return;
+    const h = Math.ceil($('stage').getBoundingClientRect().height) + 14;
+    desktop.window.place({ pin: openDown ? 'top_left' : 'bottom_left', width: FLOAT.width, height: Math.max(220, h) }).catch(() => {});
+  }, 60);
+}
+['pointerdown', 'keydown', 'input', 'wheel', 'pointermove'].forEach(ev => $('stage').addEventListener(ev, () => { if (!folded) lastUI = Date.now(); }, true));
+setInterval(() => {
+  const listening = typeof dict !== 'undefined' && dict && dict.active();
+  if (!folded && !busy && !speaking && !listening && Date.now() - lastUI > 25000 && !$('stage').matches(':hover')) setFolded(true);
+}, 2000);
+if (!store.get('patted', false)) $('patHint').classList.add('show');
+
+/* ---------- mood + face ---------- */
+function applyMood(root, m) {
+  root.dataset.mood = m;
+  root.querySelectorAll('[data-moods]').forEach(el => {
+    el.style.display = el.dataset.moods.split(' ').includes(m) ? '' : 'none';
+  });
+}
+function setMood(m) { mood = MOODS.includes(m) ? m : 'neutral'; applyMood(octo, mood); applyMood($('fx'), mood); if (o3) o3.setMood(mood); updateLook(); }
+setMood('happy');
+
+function showExchange(you, say) {
+  $('you').textContent = you ? 'you: ' + you : '';
+  $('you').style.display = you ? 'block' : 'none';
+  $('say').textContent = say;
+  $('bubble').scrollTop = $('bubble').scrollHeight;
+}
+
+function updateLook() {
+  const [x, y] = mood === 'thinking' ? [2, -3] : [lookX, lookY];
+  $('look').setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+}
+document.addEventListener('mousemove', (e) => {
+  const r = $('petWrap').getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height * .47);
+  const d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 120);
+  lookX = dx / d * 3.5 * k; lookY = dy / d * 3 * k;
+  wake(); updateLook();
+});
+document.addEventListener('keydown', wake);
+function wake() { lastActive = Date.now(); if (mood === 'sleepy' && !busy) setMood('happy'); }
+setInterval(() => {
+  if (!busy && !focus.running && !sleep.running && mood !== 'sleepy' && Date.now() - lastActive > 120000) {
+    setMood('sleepy'); showExchange('', 'zzz… mmm… seaweed…');
+  }
+}, 5000);
+
+let moodTimer;
+function settleMood(ms) {
+  clearTimeout(moodTimer);
+  moodTimer = setTimeout(() => { if (!busy && mood !== 'sleepy') setMood(focus.running ? 'neutral' : 'happy'); }, ms);
+}
+function hearts(n = 3, ch = '♥', color) {
+  const w = $('petWrap'), chars = Array.isArray(ch) ? ch : [ch];
+  for (let i = 0; i < n; i++) {
+    const h = document.createElement('span');
+    h.className = 'floater'; h.textContent = chars[i % chars.length];
+    const col = Array.isArray(color) ? color[i % color.length] : color;
+    if (col) h.style.color = col;
+    h.style.fontSize = (14 + Math.random() * 12) + 'px';
+    h.style.left = (25 + Math.random() * 100) + 'px'; h.style.top = (20 + Math.random() * 50) + 'px';
+    h.style.setProperty('--dx', (Math.random() * 60 - 30) + 'px'); h.style.animationDelay = (i * .1) + 's';
+    w.appendChild(h); setTimeout(() => h.remove(), 2200);
+  }
+}
+const RAINBOW = ['#ff6f91', '#FFC94D', '#7FB77E', '#8EC5F2', '#B48BE0'];
+const REACTIONS = [
+  { c: 'r-squish', m: 'love', f: ['♥', '♡'], col: '#ff6f91', lines: ['more pats pls~', 'blub blub ♡', 'you are my favorite human', 'squishy hug accepted'] },
+  { c: 'r-jump', m: 'excited', f: ['✦', '★'], col: '#FFC94D', lines: ['boing!', 'wheee!', 'did you see how high i went??'] },
+  { c: 'r-spin', m: 'happy', f: ['✧', '✦'], col: '#FFC94D', lines: ['weeee spin!', '360 degrees of octopus', '*twirls* i\'ve been practicing'] },
+  { c: 'r-flip', m: 'surprised', f: ['!', '?'], col: '#E8775C', lines: ['woah, i flipped!', 'is this my good side?'] },
+  { c: 'r-wiggle', m: 'happy', f: ['~', '♪'], col: '#E8775C', lines: ['hehe that tickles!', 'nooo not the tickle spot', '*giggle wiggle*'] },
+  { c: 'r-grow', m: 'excited', f: ['!', '✦'], col: '#E8775C', lines: ['i am HUGE now', 'big inky energy', 'mega octopus mode'] },
+  { c: 'r-shy r-love', m: 'love', f: ['♡'], col: '#ff8fab', lines: ['oh… hi… *blushes*', 'you\'re making me pink(er)', 'stoppp you\'re too nice'] },
+  { c: 'r-rainbow', m: 'excited', f: ['✿', '★', '♥', '✦'], col: RAINBOW, lines: ['RAINBOW MODE!', 'did you know octopuses can change color?', 'ooh i feel sparkly'] },
+  { c: 'r-frenzy', m: 'excited', f: ['~', '~', '!'], col: '#E8775C', lines: ['all eight arms at once!!', 'tentacle dance party', 'flail mode activated'] },
+  { c: 'r-ink', m: 'surprised', f: ['●', '•', '●'], col: '#5a4743', lines: ['oops! sorry, that was ink', 'you startled me! *ink puff*', 'that ink was… intentional'] },
+  { c: 'r-bubbles', m: 'happy', f: ['○', '◦', '○', '°'], col: '#8EC5F2', lines: ['blub blub blub', 'bubbles for you~', 'ocean vibes only'] },
+  { c: 'r-peek', m: 'surprised', f: [], lines: ['peekaboo!', 'you can\'t see me… now you can!', 'boo!'] },
+  { c: 'r-dance', m: 'happy', f: ['♪', '♫'], col: '#B48BE0', lines: ['♪ dance break ♪', 'la la la~ octopus groove', 'feel the rhythm of the sea'] },
+];
+const RARE = [
+  { c: 'r-bloom', m: 'love', f: ['✿', '❀'], col: ['#FFB3C7', '#FFD66B'], lines: ['my sprout bloomed!! that only happens on lucky days'] },
+  { c: 'r-gold', m: 'excited', f: ['✦', '★', '✧'], col: '#FFC94D', lines: ['GOLDEN INKY! super rare! make a wish~'] },
+];
+const DIZZY = { c: 'r-dizzy', m: 'surprised', f: ['@', '✧', '?'], col: '#B48BE0', lines: ['@_@ so many pats… the room is spinning', 'woah woah, slow down, i\'m dizzy~'] };
+const MEGA = { c: 'r-rainbow r-frenzy', m: 'love', f: ['♥', '★', '✿', '♥', '✦', '♥'], col: RAINBOW, lines: ['OKAY OKAY i love you too!!!', 'MAXIMUM PAT LEVEL REACHED'] };
+const WAKE = { c: 'r-jump', m: 'surprised', f: ['!', '!'], col: '#E8775C', lines: ['huh?! i\'m up! i\'m up!', 'i was just resting my eyes…'] };
+let lastReact = null, lastLine = null, combo = 0, lastClick = 0, reactTimer;
+function animate(cls) {
+  if (calm.running || sleep.running) return;
+  if (o3) { o3.react(cls); return; }
+  const w = $('petWrap'); w.className = ''; void w.offsetWidth;
+  cls.split(' ').forEach(c => w.classList.add(c));
+  clearTimeout(reactTimer); reactTimer = setTimeout(() => { w.className = ''; }, 3200);
+}
+const pick = (a, not) => { const opts = a.length > 1 ? a.filter(x => x !== not) : a; return opts[Math.floor(Math.random() * opts.length)]; };
+function pet() {
+  unfold();
+  if (!store.get('patted', false)) { store.set('patted', true); $('patHint').classList.remove('show'); }
+  if (sleep.running) { hearts(2, '♡'); if (!busy) showExchange('', sleep.asleep ? 'zzz… (shh, sleepy pats only)' : pick(['mm, cozy pat~', 'you\'re doing great, almost bedtime~'])); return; }
+  if (calm.running) { hearts(2, '○'); [...$('petWrap').querySelectorAll('.floater')].forEach(f => f.classList.add('slow')); return; }
+  const wasSleepy = mood === 'sleepy';
+  wake();
+  const now = Date.now();
+  combo = now - lastClick < 700 ? combo + 1 : 1; lastClick = now;
+  let r;
+  if (wasSleepy) r = WAKE;
+  else if (combo === 12 || combo === 25) r = MEGA;
+  else if (combo === 6 || combo === 18) r = DIZZY;
+  else if (Math.random() < .07) r = pick(RARE);
+  else r = pick(REACTIONS, lastReact);
+  lastReact = r;
+  animate(r.c);
+  if (r.f.length) hearts(3 + Math.floor(Math.random() * 3) + (r === MEGA ? 4 : 0), r.f, r.col);
+  if (busy) return;
+  setMood(r.m);
+  const line = focus.running && !focus.isBreak && r !== MEGA ? 'shh~ we\'re focusing. tiny pat accepted.' : pick(r.lines, lastLine);
+  lastLine = line;
+  showExchange('', line);
+  settleMood(r === DIZZY || r === MEGA ? 3500 : 2600);
+}
+let suppressClick = false;
+$('petWrap').addEventListener('click', () => { if (suppressClick) { suppressClick = false; return; } pet(); });
+$('petWrap').addEventListener('dblclick', (e) => {
+  e.preventDefault();
+  if (spin.moved) return;
+  clearTimeout(moodTimer);
+  setTimeout(() => { setFolded(true); if (!busy && !sleep.running && !calm.running) { setMood('happy'); } }, 150);
+});
+
+/* ---------- spin by dragging ---------- */
+const spin = { ry: 0, rx: 0, vy: 0, vx: 0, drag: false, moved: false, lx: 0, ly: 0, lt: 0, travel: 0, shown: '' };
+$('petWrap').addEventListener('pointerdown', (e) => {
+  spin.drag = true; spin.moved = false; spin.lx = e.clientX; spin.ly = e.clientY; spin.lt = performance.now();
+  spin.vx = spin.vy = 0; spin.start = 0;
+  try { $('petWrap').setPointerCapture(e.pointerId); } catch {}
+});
+$('petWrap').addEventListener('pointermove', (e) => {
+  if (!spin.drag) return;
+  const dx = e.clientX - spin.lx, dy = e.clientY - spin.ly, now = performance.now(), dt = Math.max(8, now - spin.lt);
+  spin.start += Math.abs(dx) + Math.abs(dy);
+  if (!spin.moved && spin.start > 6) { spin.moved = true; spin.travel = 0; $('petWrap').classList.add('grabbing'); }
+  if (!spin.moved) return;
+  spin.ry += dx * 1.4; spin.rx -= dy * 1.4; spin.travel += Math.abs(dx * 1.4) + Math.abs(dy * 1.4);
+  spin.vy = dx * 1.4 / dt * 16; spin.vx = -dy * 1.4 / dt * 16;
+  spin.lx = e.clientX; spin.ly = e.clientY; spin.lt = now;
+});
+function endDrag() {
+  if (!spin.drag) return;
+  spin.drag = false; $('petWrap').classList.remove('grabbing');
+  if (spin.moved) suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 50);
+}
+$('petWrap').addEventListener('pointerup', endDrag);
+$('petWrap').addEventListener('pointercancel', endDrag);
+function spinLoop() {
+  if (!spin.drag) {
+    spin.ry += spin.vy; spin.rx += spin.vx; spin.travel += Math.abs(spin.vy) + Math.abs(spin.vx);
+    spin.vy *= .965; spin.vx *= .965;
+    if (Math.abs(spin.vy) < .4 && Math.abs(spin.vx) < .4) {
+      spin.vy = spin.vx = 0;
+      const ty = Math.round(spin.ry / 360) * 360, tx = Math.round(spin.rx / 360) * 360;
+      spin.ry += (ty - spin.ry) * .07; spin.rx += (tx - spin.rx) * .07;
+      if (Math.abs(ty - spin.ry) < .3 && Math.abs(tx - spin.rx) < .3) {
+        spin.ry = 0; spin.rx = 0;
+        if (spin.travel > 300) spinDone(spin.travel);
+        spin.travel = 0;
+      }
+    }
+  }
+  const tf = (spin.ry || spin.rx) ? `perspective(700px) rotateY(${spin.ry.toFixed(1)}deg) rotateX(${spin.rx.toFixed(1)}deg)` : '';
+  if (o3) o3.spin(spin.ry, spin.rx);
+  else if (tf !== spin.shown) {
+    octo.style.transform = tf; spin.shown = tf;
+    const r = Math.PI / 180;
+    octo.classList.toggle('back', Math.cos(spin.ry * r) * Math.cos(spin.rx * r) < 0);
+  }
+  requestAnimationFrame(spinLoop);
+}
+requestAnimationFrame(spinLoop);
+function spinDone(travel) {
+  if (busy || calm.running) return;
+  const turns = travel / 360;
+  if (turns > 4) { setMood('surprised'); animate('r-dizzy'); showExchange('', pick(['@_@ the world is spinning… do it again', `${Math.round(turns)} spins?! i'm so dizzy~`, 'wheeeeee— *wobble*'])); }
+  else if (turns > 1.2) { setMood('excited'); showExchange('', pick(['whee! did you see my back?', 'a full spin! i have spots back there~', 'round and round i go!'])); }
+  else { setMood('happy'); showExchange('', pick(['hehe, you turned me around!', 'peek at my backside spots~', 'whoa, new angle!'])); }
+  settleMood(3500);
+}
+
+/* ---------- notifications ---------- */
+function notify(body) {
+  if (canNotify && desktop?.notification) desktop.notification.show({ body: body.slice(0, 300) }).catch(() => {});
+}
+function badge(text) { desktop?.app?.dock.setBadge(text).catch(() => {}); }
+window.addEventListener('focus', () => { if (!focus.running) badge(''); });
+
+/* ---------- chat ---------- */
+let history = store.get('history', []);
+if (history.length) {
+  const lastU = [...history].reverse().find(m => m.role === 'user');
+  const lastI = [...history].reverse().find(m => m.role === 'inky');
+  if (lastI) showExchange(lastU ? lastU.text : '', lastI.text);
+}
+$('model').value = store.get('model', 'tier:quick');
+$('model').onchange = () => store.set('model', $('model').value);
+
+const samplePromise = (window.claude ? claude.use('sample') : Promise.resolve(null)).then(s => (sampleFn = s)).catch(() => null);
+
+const PERSONA = `You are Inky, a tiny, cute, cheerful peach-colored octopus with a little leaf sprout on your head. You live on your human's computer desktop as a companion and helper. You're warm, playful and a little silly, but when they ask a real question or give an instruction you do it properly and correctly. Keep replies short: 1 to 3 sentences, under 70 words, unless they clearly ask for more detail or the task needs it. Casual lowercase voice; an occasional "~" is fine. No emoji, no markdown.
+Format, strictly:
+- Start with exactly one mood tag from [happy] [excited] [love] [thinking] [sad] [sleepy] [surprised] [neutral], then a space, then the reply.
+- End with a final new line that starts with ">> " followed by 2 or 3 short things the human might want to say or ask next (each under 7 words), separated by " | ".`;
+
+function parseReply(text) {
+  let t = text.replace(/^\s+/, ''), m = t.match(/^\[(\w+)\]\s*/), md = null;
+  if (m) { md = m[1].toLowerCase(); t = t.slice(m[0].length); }
+  else if (t.startsWith('[') && !t.includes(']')) return { mood: null, body: '', sug: [] };
+  let sug = [];
+  const i = t.indexOf('>>');
+  if (i >= 0) { sug = t.slice(i + 2).split('|').map(s => s.trim()).filter(Boolean).slice(0, 3); t = t.slice(0, i); }
+  else { const j = t.lastIndexOf('\n>'); if (j >= 0 && t.length - j < 4) t = t.slice(0, j); }
+  return { mood: md, body: t.trim(), sug };
+}
+function renderSuggestions(list) {
+  const box = $('suggest'); box.textContent = '';
+  list.forEach(s => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = s;
+    b.onclick = () => ask(s); box.appendChild(b);
+  });
+}
+
+function renderChoices(list) {
+  const box = $('suggest'); box.textContent = '';
+  list.forEach(({ label, fn, go, href }) => {
+    const b = document.createElement(href ? 'a' : 'button'); b.className = 'chip' + (go ? ' go' : ''); b.textContent = label;
+    if (href) { b.href = href; b.target = '_blank'; b.rel = 'noopener'; b.style.textDecoration = 'none'; b.onclick = () => { fn && fn(); }; }
+    else { b.type = 'button'; b.onclick = () => { renderSuggestions([]); fn(); }; }
+    box.appendChild(b);
+  });
+}
+async function ask(text) {
+  text = (text || '').trim();
+  if (!text || busy) return;
+  wake(); busy = true; $('send').disabled = true; renderSuggestions([]);
+  setMood('thinking'); showExchange(text, '…');
+  history.push({ role: 'user', text });
+  const s = sampleFn || await samplePromise;
+  if (!s) { history.pop(); return finish('sad', "i can't talk from here… open me from Claude and i'll chat~", text); }
+  const ctx = [];
+  const open = tasks.filter(t => !t.done).map(t => t.text);
+  if (open.length) ctx.push('Their open tasks: ' + open.join('; ') + '.');
+  if (focus.running) ctx.push(`They're in a focus session${focus.goal ? ' on: ' + focus.goal : ''} (${Math.ceil(focus.left / 60)} min left).`);
+  const transcript = history.slice(-16).map(m => (m.role === 'user' ? 'Human' : 'Inky') + ': ' + m.text).join('\n');
+  const prompt = `${PERSONA}\n\n${ctx.join(' ')}\n\nConversation so far:\n${transcript}\n\nWrite Inky's next reply in the format above.`;
+  const [kind, val] = $('model').value.split(':');
+  const opts = { cache: false, modelTier: kind === 'tier' ? val : 'default',
+    onText: ({ text: whole }) => { const p = parseReply(whole); if (p.mood && mood === 'thinking') setMood(p.mood); if (p.body) showExchange(text, p.body); } };
+  if (kind === 'model') { opts.model = val; if (val.includes('haiku')) opts.modelTier = 'quick'; }
+  try {
+    const res = await s(prompt, opts);
+    const p = parseReply(res.text || '');
+    const body = p.body || '…blub?';
+    history.push({ role: 'inky', text: body }); store.set('history', history.slice(-30));
+    finish(p.mood || 'happy', body, text);
+    renderSuggestions(p.sug.length ? p.sug : ['tell me more', 'thanks inky!']);
+    speakText(body);
+    if (!document.hasFocus()) { notify('Inky: ' + body); badge('1'); }
+  } catch (err) {
+    history.pop();
+    const code = err && err.code;
+    finish('sad', code === 'not_granted' ? "i need your ok before i can talk (check the permission prompt)~"
+      : code === 'rate_limited' ? "phew, too many words! give me a little minute~"
+      : "oops, my words got tangled in my tentacles. try again?", text);
+    renderSuggestions(['try again: ' + text.slice(0, 40)]);
+    $('suggest').firstChild.onclick = () => ask(text);
+  }
+}
+function finish(m, say, you) {
+  busy = false; $('send').disabled = false;
+  setMood(m); showExchange(you || '', say); settleMood(9000);
+}
+$('chat').addEventListener('submit', (e) => {
+  e.preventDefault(); const t = $('msg').value; $('msg').value = '';
+  const m = t.trim().match(/^idea\s*[:\-]\s*(.+)/is);
+  if (m) saveIdea(m[1]); else ask(t);
+});
+$('clearBtn').onclick = () => { history = []; store.set('history', []); renderSuggestions([]); setMood('excited'); showExchange('', 'fresh start! hi again~'); settleMood(3000); };
+
+/* ---------- panels ---------- */
+let tab = null;
+function openTab(t) {
+  tab = tab === t ? null : t;
+  document.querySelectorAll('.nb[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  $('sleepNav').classList.toggle('on', tab === 'sleep');
+  $('wakeNav').classList.toggle('on', tab === 'morning');
+  $('panel').classList.toggle('hidden', !tab);
+  document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab));
+}
+document.querySelectorAll('.nb[data-tab]').forEach(b => b.onclick = () => openTab(b.dataset.tab));
+
+/* quick instructions */
+const DEFAULT_QUICK = ['give me a one-line pep talk', 'help me plan my next hour', 'explain that more simply', 'make that shorter', 'what should i do first from my tasks?', 'tell me a fun fact'];
+let quick = store.get('quick', DEFAULT_QUICK);
+function renderQuick() {
+  const box = $('quickList'); box.textContent = '';
+  quick.forEach((q, i) => {
+    const wrap = document.createElement('span'); wrap.className = 'qi';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = q; b.onclick = () => ask(q);
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.title = 'remove';
+    x.onclick = () => { quick.splice(i, 1); store.set('quick', quick); renderQuick(); };
+    wrap.append(b, x); box.appendChild(wrap);
+  });
+}
+function addQuick() { const v = $('quickNew').value.trim(); if (!v) return; quick.push(v); store.set('quick', quick); $('quickNew').value = ''; renderQuick(); }
+$('quickAdd').onclick = addQuick;
+$('quickNew').onkeydown = (e) => { if (e.key === 'Enter') addQuick(); };
+renderQuick();
+
+/* tasks */
+let tasks = store.get('tasks', []);
+let doneToday = store.get('done', { day: '', n: 0 });
+const today = () => new Date().toDateString();
+if (doneToday.day !== today()) doneToday = { day: today(), n: 0 };
+function renderTasks() {
+  const box = $('taskList'); box.textContent = '';
+  if (!tasks.length) { const p = document.createElement('div'); p.className = 'muted'; p.textContent = 'nothing yet. add something and i\'ll cheer when it\'s done.'; box.appendChild(p); }
+  tasks.forEach((t) => {
+    const row = document.createElement('div'); row.className = 'task' + (t.done ? ' done' : '');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = t.done;
+    cb.onchange = () => { t.done = cb.checked; if (t.done) celebrate(t.text); saveTasks(); };
+    const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
+    const help = document.createElement('button'); help.type = 'button'; help.className = 'x'; help.textContent = '?'; help.title = 'ask inky to break this down';
+    help.onclick = () => ask('help me break this task into small steps: ' + t.text);
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×';
+    x.onclick = () => { tasks = tasks.filter(o => o !== t); saveTasks(); };
+    row.append(cb, sp, help, x); box.appendChild(row);
+  });
+  $('doneCount').textContent = doneToday.n ? `${doneToday.n} done today` : '';
+}
+function saveTasks() { store.set('tasks', tasks); store.set('done', doneToday); renderTasks(); }
+function addTask() { const v = $('taskNew').value.trim(); if (!v) return; tasks.push({ text: v, done: false }); $('taskNew').value = ''; saveTasks(); }
+$('taskAdd').onclick = addTask;
+$('taskNew').onkeydown = (e) => { if (e.key === 'Enter') addTask(); };
+$('taskClear').onclick = () => { tasks = tasks.filter(t => !t.done); saveTasks(); };
+const CHEERS = ['you did it!! ', 'yesss, one down! ', 'look at you go~ ', 'tentacle high-five! '];
+function celebrate(text) {
+  if (doneToday.day !== today()) doneToday = { day: today(), n: 0 };
+  doneToday.n++;
+  if (!busy) { setMood('excited'); showExchange('', CHEERS[Math.floor(Math.random() * CHEERS.length)] + '"' + text + '" is done.'); settleMood(4000); }
+  hearts(4, '★');
+  notify(`Task done: ${text} (${doneToday.n} today)`);
+}
+renderTasks();
+
+/* focus timer */
+const focus = { running: false, left: 25 * 60, total: 25 * 60, isBreak: false, end: 0, goal: '', iv: null, sessions: store.get('sessions', { day: '', n: 0 }) };
+if (focus.sessions.day !== today()) focus.sessions = { day: today(), n: 0 };
+const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+function renderFocus() {
+  $('clock').textContent = fmt(focus.left);
+  $('fStart').textContent = focus.running ? 'pause' : (focus.left < focus.total ? 'resume' : 'start');
+  $('focusCount').textContent = focus.sessions.n ? `${focus.sessions.n} session${focus.sessions.n > 1 ? 's' : ''} today` : '';
+  const tag = $('timerTag');
+  if (calm.running) return;
+  tag.classList.toggle('on', focus.running || focus.left < focus.total);
+  tag.textContent = (focus.isBreak ? 'break ' : 'focus ') + fmt(focus.left) + (focus.running ? '' : ' (paused)');
+  octo.classList.toggle('focusing', focus.running && !focus.isBreak);
+}
+let lastMin = -1;
+function tick() {
+  focus.left = Math.max(0, Math.round((focus.end - Date.now()) / 1000));
+  renderFocus();
+  const min = Math.ceil(focus.left / 60);
+  if (min !== lastMin) { lastMin = min; badge(focus.left ? min + 'm' : ''); if (hasTray) setTray(); }
+  if (focus.left <= 0) focusDone();
+}
+function setPreset(min, isBreak) {
+  if (focus.running) return;
+  focus.total = focus.left = min * 60; focus.isBreak = !!isBreak; renderFocus();
+}
+document.querySelectorAll('#presets .btn').forEach(b => b.onclick = () => setPreset(+b.dataset.min, b.dataset.break));
+function startFocus() {
+  if (focus.running) { // pause
+    focus.running = false; clearInterval(focus.iv); if (!calm.running) stopSound(); renderFocus(); if (hasTray) setTray(); return;
+  }
+  focus.goal = $('focusGoal').value.trim();
+  focus.running = true; focus.end = Date.now() + focus.left * 1000; lastMin = -1;
+  if (focusSet.sound !== 'none' && !focus.isBreak) { stopSound(); startSound(focusSet.sound, focusSet.vol); }
+  clearInterval(focus.iv); focus.iv = setInterval(tick, 1000); tick();
+  if (!busy) {
+    setMood(focus.isBreak ? 'happy' : 'neutral');
+    showExchange('', focus.isBreak ? 'break time! stretch those arms (all eight)~' : `okay, ${Math.round(focus.total / 60)} minutes of focus${focus.goal ? ' on ' + focus.goal : ''}. you've got this. i'll be quiet as a clam.`);
+  }
+}
+function stopFocus() {
+  if (focus.running) stopSound();
+  focus.running = false; clearInterval(focus.iv); focus.left = focus.total; renderFocus(); badge(''); if (hasTray) setTray();
+}
+function focusDone() {
+  unfold();
+  const wasBreak = focus.isBreak;
+  focus.running = false; clearInterval(focus.iv); stopSound();
+  if (!wasBreak) { focus.sessions.n++; store.set('sessions', focus.sessions); }
+  badge(''); hearts(5, '★');
+  setMood(wasBreak ? 'happy' : 'excited');
+  const msg = wasBreak ? 'break\'s over! ready for another round?' : `focus done${focus.goal ? ' on ' + focus.goal : ''}! amazing work. take a 5 min break?`;
+  showExchange('', msg); notify('Inky: ' + msg);
+  renderSuggestions(wasBreak ? ['start 25 min focus'] : ['start 5 min break', 'start 25 min focus']);
+  [...$('suggest').children].forEach(b => b.onclick = () => {
+    const brk = b.textContent.includes('break'); setPreset(brk ? 5 : 25, brk); startFocus(); renderSuggestions([]);
+  });
+  if (wasBreak) setPreset(25, false); else setPreset(5, true);
+  if (hasTray) setTray();
+  desktop?.window.show().catch(() => {});
+  settleMood(6000);
+}
+$('fStart').onclick = startFocus;
+const focusSet = Object.assign({ sound: 'lofi', vol: 45 }, store.get('focusMusic', {}));
+$('focusSound').value = focusSet.sound; $('focusVol').value = focusSet.vol;
+$('focusSound').onchange = () => {
+  focusSet.sound = $('focusSound').value; store.set('focusMusic', focusSet);
+  if (focus.running && !focus.isBreak && !calm.running) { stopSound(); if (focusSet.sound !== 'none') startSound(focusSet.sound, focusSet.vol); }
+};
+$('focusVol').oninput = () => {
+  focusSet.vol = +$('focusVol').value; store.set('focusMusic', focusSet);
+  if (focus.running && !calm.running) { curVol = focusSet.vol; if (master && actx) master.gain.setTargetAtTime(vol(), actx.currentTime, .3); }
+};
+/* spotify links */
+const SPOT = {
+  focus: [['lo-fi focus', 'lofi focus'], ['deep focus', 'deep focus'], ['piano', 'peaceful piano'], ['brown noise', 'brown noise']],
+  morning: [['morning energy', 'morning energy'], ['happy hits', 'happy hits'], ['wake up', 'wake up music']],
+  calm: [['lo-fi chill', 'lofi chill'], ['meditation', 'meditation music'], ['nature', 'nature sounds'], ['sleep', 'sleep music']],
+};
+function renderSpot() {
+  const mine = store.get('spotUrl', '');
+  document.querySelectorAll('[data-spot]').forEach((box) => {
+    box.textContent = '';
+    const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = 'Spotify:'; box.appendChild(lab);
+    const add = (label, href) => { const a = document.createElement('a'); a.className = 'chip'; a.textContent = label; a.href = href; a.target = '_blank'; a.rel = 'noopener'; box.appendChild(a); };
+    if (mine) add('my playlist ↗', mine);
+    SPOT[box.dataset.spot].forEach(([label, q]) => add(label + ' ↗', 'https://open.spotify.com/search/' + encodeURIComponent(q)));
+    if (typeof spotifyLocal !== 'undefined' && spotifyLocal) {
+      // control the Spotify app on this Mac instead of opening the web
+      [...box.querySelectorAll('a.chip')].forEach((a) => {
+        a.onclick = (e) => {
+          e.preventDefault();
+          const uri = spotifyUriFrom(a.href);
+          if (uri) spotify.play(uri).then(() => setTimeout(refreshNow, 1500));
+          else spotify.search(decodeURIComponent(a.href.split('/search/')[1] || ''));
+        };
+      });
+      const ctl = document.createElement('div'); ctl.className = 'row'; ctl.style.cssText = 'width:100%;gap:4px;margin-top:4px';
+      [['⏮', 'previous track'], ['⏯', 'playpause'], ['⏭', 'next track']].forEach(([lab, c]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn ghost'; b.textContent = lab;
+        b.onclick = () => spotify.cmd(c).then(() => setTimeout(refreshNow, 800)); ctl.appendChild(b);
+      });
+      const np = document.createElement('span'); np.className = 'muted nowPlaying'; np.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; ctl.appendChild(np);
+      box.appendChild(ctl);
+    }
+  });
+  if (typeof spotifyLocal !== 'undefined' && spotifyLocal) refreshNow();
+}
+$('spotUrl').value = store.get('spotUrl', '');
+$('spotSave').onclick = () => {
+  const v = $('spotUrl').value.trim();
+  if (v && !/^https:\/\/open\.spotify\.com\//.test(v)) { setMood('thinking'); showExchange('', 'hmm, that doesn\'t look like a Spotify link. it should start with https://open.spotify.com/'); return; }
+  store.set('spotUrl', v); renderSpot(); setMood('happy'); showExchange('', v ? 'saved! your playlist is in focus and calm now~' : 'removed your playlist link.'); settleMood(3000);
+};
+renderSpot();
+$('fStop').onclick = stopFocus;
+renderFocus();
+
+/* ---------- voice ---------- */
+const settings = Object.assign({ voiceOn: false, voice: 'airy', standEvery: 45, taskEvery: 60 }, store.get('settings', {}));
+const saveSettings = () => store.set('settings', settings);
+var tts = null, dict = null, speaking = false;
+function renderSpk() {
+  const b = $('spk');
+  b.classList.toggle('active', settings.voiceOn);
+  b.classList.toggle('on', speaking);
+  $('spkWaves').style.display = settings.voiceOn ? '' : 'none';
+  $('spkMute').style.display = settings.voiceOn ? 'none' : '';
+  b.title = speaking ? 'stop talking' : settings.voiceOn ? 'voice replies: on (tap to turn off)' : 'voice replies: off (tap to turn on)';
+  octo.classList.toggle('talking', speaking);
+}
+function speakText(text, force) {
+  if (!tts || !(settings.voiceOn || force) || !text) return;
+  tts.speak(text.slice(0, 2000), { voice: settings.voice }).catch((e) => {
+    if (e && (e.code === 'not_granted' || e.code === 'unavailable')) {
+      settings.voiceOn = false; saveSettings(); $('spk').classList.add('hidden'); $('voiceRow').classList.add('hidden'); $('bubble').classList.remove('hasSpk');
+    }
+  });
+}
+$('spk').onclick = () => {
+  if (!tts) return;
+  if (speaking) { tts.stop().catch(() => {}); return; }
+  settings.voiceOn = !settings.voiceOn; saveSettings(); renderSpk();
+  if (settings.voiceOn) speakText($('say').textContent);
+};
+$('voiceSel').value = settings.voice;
+$('voiceSel').onchange = () => { settings.voice = $('voiceSel').value; saveSettings(); };
+$('voiceTest').onclick = () => speakText("hi hi! i'm inky, your little octopus buddy~", true);
+
+let micBase = '', micTarget = 'msg';
+function micDone() {
+  const el = $(micTarget), v = el.value.trim();
+  if (!v) return;
+  el.value = '';
+  if (micTarget === 'ideaNew') saveIdea(v); else ask(v);
+}
+function micClick(target) {
+  if (!dict) return;
+  if (dict.active()) { dict.stop().then(micDone).catch(() => {}); return; }
+  micTarget = target;
+  micBase = $(micTarget).value;
+  dict.start().catch((e) => {
+    if (e && (e.code === 'not_granted' || e.code === 'unavailable')) {
+      $('mic').classList.add('hidden');
+      $('ideaMic').classList.add('hidden');
+      showExchange('', e.code === 'not_granted' ? "okay, no mic! you can always type to me~" : "voice isn't available here, but typing works~");
+    }
+  });
+}
+$('mic').onclick = () => micClick('msg');
+$('ideaMic').onclick = () => micClick('ideaNew');
+
+if (window.claude) {
+  claude.use('tts').then((t) => {
+    tts = t; if (!t) return;
+    $('spk').classList.remove('hidden'); $('bubble').classList.add('hasSpk'); $('voiceRow').classList.remove('hidden');
+    t.onState(({ state }) => { speaking = state !== 'idle'; renderSpk(); });
+    renderSpk();
+  }).catch(() => {});
+  claude.use('dictation').then((d) => {
+    dict = d; if (!d) return;
+    $('mic').classList.remove('hidden'); $('ideaMic').classList.remove('hidden');
+    d.onPartial(({ text }) => { $(micTarget).value = micBase + (text ? (micBase ? ' ' : '') + text : ''); });
+    d.onFinal(({ text }) => { micBase = micBase ? micBase + text : text.trimStart(); $(micTarget).value = micBase; });
+    d.onState(({ state, reason }) => {
+      const on = state !== 'idle';
+      $('mic').classList.toggle('on', on && micTarget === 'msg'); $('ideaMic').classList.toggle('on', on && micTarget === 'ideaNew');
+      $('msg').placeholder = on && micTarget === 'msg' ? 'listening… tap the mic to send' : 'ask inky anything…';
+      $('ideaNew').placeholder = on && micTarget === 'ideaNew' ? 'listening… tap the mic to save' : 'quick idea…';
+      if (state === 'listening' && !busy) { setMood('surprised'); showExchange('', micTarget === 'ideaNew' ? 'ooh, an idea! i\'m listening~' : "i'm all ears~ (well, all arms)"); }
+      if (!on) {
+        if (!busy && mood === 'surprised') setMood('happy');
+        if (reason === 'unavailable' || reason === 'not_granted') { $('mic').classList.add('hidden'); $('ideaMic').classList.add('hidden'); }
+        if (reason === 'viewer_stopped') micDone();
+      }
+    });
+  }).catch(() => {});
+}
+
+/* ---------- reminders ---------- */
+let standToday = store.get('stand', { day: '', n: 0 });
+if (standToday.day !== today()) standToday = { day: today(), n: 0 };
+const due = { stand: 0, task: 0 };
+function resetDue(which) {
+  const now = Date.now();
+  if (!which || which === 'stand') due.stand = settings.standEvery ? now + settings.standEvery * 60000 : 0;
+  if (!which || which === 'task') due.task = settings.taskEvery ? now + settings.taskEvery * 60000 : 0;
+  renderRem();
+}
+function renderRem() {
+  const parts = [];
+  const mins = (t) => Math.max(1, Math.round((t - Date.now()) / 60000));
+  if (due.stand) parts.push(`next stand-up in ${mins(due.stand)} min`);
+  if (due.task) parts.push(`task check-in in ${mins(due.task)} min`);
+  $('nextRem').textContent = parts.length ? parts.join(' · ') : 'all reminders are off.';
+  $('standCount').textContent = standToday.n ? `stood up ${standToday.n}× today` : '';
+}
+$('standEvery').value = String(settings.standEvery);
+$('taskEvery').value = String(settings.taskEvery);
+$('standEvery').onchange = () => { settings.standEvery = +$('standEvery').value; saveSettings(); resetDue('stand'); };
+$('taskEvery').onchange = () => { settings.taskEvery = +$('taskEvery').value; saveSettings(); resetDue('task'); };
+const STAND_LINES = ["stand-up time! stretch those arms (i'll stretch all eight)~", 'time to get up for a sec! wiggle, sip some water, look out a window.', 'hey you! up up up~ a little stretch break.', "you've been sitting a while. roll your shoulders, take a little walk?"];
+function standReminder() {
+  unfold();
+  const line = pick(STAND_LINES);
+  animate('r-jump'); setMood('excited'); showExchange('', line);
+  notify('Inky: ' + line); desktop?.window.show().catch(() => {});
+  renderChoices([
+    { label: 'i stood up! ✓', go: true, fn: () => {
+      if (standToday.day !== today()) standToday = { day: today(), n: 0 };
+      standToday.n++; store.set('stand', standToday); renderRem();
+      animate('r-dance'); hearts(5, ['♥', '★'], RAINBOW); setMood('love');
+      showExchange('', standToday.n > 1 ? `that's ${standToday.n} stand-ups today. so proud of you~` : 'yay! your body says thank you~');
+      settleMood(4000);
+    } },
+    { label: 'snooze 10 min', fn: () => { due.stand = Date.now() + 600000; renderRem(); setMood('neutral'); showExchange('', 'okay, 10 more minutes~ i\'ll be watching.'); settleMood(3000); } },
+  ]);
+  settleMood(8000);
+}
+function taskReminder(force) {
+  unfold();
+  const open = tasks.filter(t => !t.done);
+  if (!open.length) { if (force) { setMood('happy'); showExchange('', 'your task list is empty! add something in tasks and i\'ll keep you on track~'); settleMood(4000); } return; }
+  const list = open.slice(0, 3).map(t => t.text).join(', ') + (open.length > 3 ? ` (+${open.length - 3} more)` : '');
+  const line = `quick check-in~ still on your list: ${list}`;
+  animate('r-wiggle'); setMood('neutral'); showExchange('', line);
+  notify('Inky: ' + line); desktop?.window.show().catch(() => {});
+  renderChoices([
+    { label: 'show my tasks', go: true, fn: () => { if (tab !== 'tasks') openTab('tasks'); } },
+    { label: 'which one first?', fn: () => ask('which of my open tasks should i do first, and why?') },
+    { label: 'later', fn: () => { setMood('happy'); showExchange('', 'okay! i\'ll check in again later~'); settleMood(3000); } },
+  ]);
+  settleMood(8000);
+}
+$('testStand').onclick = standReminder;
+$('testTask').onclick = () => taskReminder(true);
+setInterval(() => {
+  const now = Date.now(), deep = (focus.running && !focus.isBreak) || calm.running || sleep.running || morn.running;
+  if (due.stand && now >= due.stand) {
+    if (deep) due.stand = focus.end + 30000;
+    else if (busy) due.stand = now + 60000;
+    else { standReminder(); due.stand = now + settings.standEvery * 60000; }
+  }
+  if (due.task && now >= due.task) {
+    if (deep || busy) due.task = now + 5 * 60000;
+    else { taskReminder(false); due.task = now + settings.taskEvery * 60000; }
+  }
+  renderRem();
+}, 20000);
+resetDue();
+
+/* ---------- calm / meditation ---------- */
+Object.assign(calm, { end: 0, iv: null, bt: null, ct: null, sessions: store.get('calmDone', { day: '', n: 0 }) });
+if (calm.sessions.day !== today()) calm.sessions = { day: today(), n: 0 };
+const calmSet = Object.assign({ sound: 'ocean', breath: '446', len: '5', vol: 55 }, store.get('calm', {}));
+$('calmSound').value = calmSet.sound; $('calmBreath').value = calmSet.breath; $('calmLen').value = calmSet.len; $('calmVol').value = calmSet.vol;
+['calmSound', 'calmBreath', 'calmLen'].forEach(id => $(id).onchange = () => {
+  calmSet.sound = $('calmSound').value; calmSet.breath = $('calmBreath').value; calmSet.len = $('calmLen').value; store.set('calm', calmSet);
+  if (calm.running && id === 'calmSound') { stopSound(); if (calmSet.sound !== 'none') startSound(calmSet.sound, calmSet.vol); }
+  if (calm.running && id === 'calmBreath') { clearTimeout(calm.bt); clearInterval(calm.ct); breathe(0); }
+});
+$('calmVol').oninput = () => { calmSet.vol = +$('calmVol').value; store.set('calm', calmSet); if (calm.running) { curVol = calmSet.vol; if (master && actx) master.gain.setTargetAtTime(vol(), actx.currentTime, .3); } };
+function renderCalm() { $('calmCount').textContent = calm.sessions.n ? `${calm.sessions.n} today` : ''; $('calmStart').textContent = calm.running ? 'end session' : 'begin'; }
+renderCalm();
+
+/* sounds, made live with Web Audio */
+let actx = null, master = null, srcs = [], bowlTimer = null, padTimer = null;
+let curVol = 55, lofiTimer = null;
+const vol = () => (curVol / 100) * .55;
+function noiseBuffer(type) {
+  const len = actx.sampleRate * 4, buf = actx.createBuffer(2, len, actx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch); let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (type === 'brown') { last = (last + .02 * w) / 1.02; d[i] = last * 3.5; } else d[i] = w * .5;
+    }
+  }
+  return buf;
+}
+function noise(type, filterType, freq, q, gain, lfoRate, lfoDepth) {
+  const s = actx.createBufferSource(); s.buffer = noiseBuffer(type); s.loop = true;
+  const f = actx.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = q;
+  const g = actx.createGain(); g.gain.value = gain;
+  s.connect(f); f.connect(g); g.connect(master); s.start();
+  srcs.push(s);
+  if (lfoRate) {
+    const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = lfoRate; lg.gain.value = lfoDepth;
+    l.connect(lg); lg.connect(g.gain); l.start(); srcs.push(l);
+  }
+  return { f, g };
+}
+function bowl(f0, when = 0, level = 1) {
+  const t0 = actx.currentTime + when;
+  [[1, .5, 9], [2.76, .22, 6], [5.4, .1, 4], [8.9, .04, 2.5]].forEach(([m, a, dec]) => {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.value = f0 * m;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(a * .35 * level, t0 + .02); g.gain.exponentialRampToValueAtTime(.0001, t0 + dec);
+    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dec + .1);
+  });
+}
+const CHORDS = [[110, 164.81, 196, 261.63, 329.63], [87.31, 130.81, 174.61, 220, 329.63], [130.81, 196, 246.94, 329.63, 392], [98, 146.83, 196, 246.94, 293.66]];
+let sched = [];
+function every(fn, ms) { const id = setInterval(fn, ms); sched.push(id); return id; }
+function makeDelay(time, fb, wet) {
+  const d = actx.createDelay(1.5); d.delayTime.value = time;
+  const f = actx.createGain(); f.gain.value = fb; const w = actx.createGain(); w.gain.value = wet;
+  d.connect(f); f.connect(d); d.connect(w); w.connect(master); return d;
+}
+function pluck(t, f, { type = 'sine', level = .1, dec = 2, dest } = {}) {
+  [[1, 1, type], [2, .28, 'triangle'], [3, .08, 'sine']].forEach(([m, a, ty]) => {
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = ty; o.frequency.value = f * m;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(level * a, t + .008); g.gain.exponentialRampToValueAtTime(.0005, t + dec / m);
+    o.connect(g); g.connect(master); if (dest) g.connect(dest); o.start(t); o.stop(t + dec / m + .05);
+  });
+}
+function pads(chords, gain, cutoff) {
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff; lp.Q.value = .5; lp.connect(master);
+  const lfo = actx.createOscillator(), lfg = actx.createGain(); lfo.frequency.value = .05; lfg.gain.value = cutoff * .35; lfo.connect(lfg); lfg.connect(lp.frequency); lfo.start(); srcs.push(lfo);
+  const voices = chords[0].map((f) => {
+    const g = actx.createGain(); g.gain.value = gain; g.connect(lp);
+    return [-4, 4].map((det, i) => { const o = actx.createOscillator(); o.type = i ? 'triangle' : 'sine'; o.frequency.value = f; o.detune.value = det; o.connect(g); o.start(); srcs.push(o); return o; });
+  });
+  let ci = 0;
+  every(() => { ci = (ci + 1) % chords.length; voices.forEach((os, i) => os.forEach(o => o.frequency.setTargetAtTime(chords[ci][i], actx.currentTime, 2.5))); }, 14000);
+}
+const WAKE_CH = [[261.63, 329.63, 392, 523.25], [196, 246.94, 293.66, 392], [220, 261.63, 329.63, 440], [174.61, 220, 261.63, 349.23]];
+const LOFI = { wake: { bpm: 104, hats: true, rain: false, cut: 3200, chords: WAKE_CH, arp: true }, lofi: { bpm: 76, hats: true, rain: false, cut: 1500 }, lofichill: { bpm: 66, hats: false, rain: false, cut: 1100 }, lofirain: { bpm: 70, hats: true, rain: true, cut: 1200 } };
+function lofi({ bpm, hats, rain, cut, chords, arp }) {
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; lp.connect(master);
+  noise('white', 'highpass', 3500, .5, .012, 0, 0);
+  if (rain) { noise('white', 'bandpass', 2600, .6, .12, .2, .02); noise('brown', 'lowpass', 300, .5, .2, 0, 0); }
+  const nb = noiseBuffer('white');
+  const CH = chords || [[174.61, 220, 261.63, 329.63], [164.81, 196, 246.94, 293.66], [146.83, 174.61, 220, 261.63], [130.81, 164.81, 196, 246.94]];
+  const step = 60 / bpm / 4; let next = actx.currentTime + .15, s = 0;
+  const kick = (t) => { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + .14); g.gain.setValueAtTime(.45, t); g.gain.exponentialRampToValueAtTime(.001, t + .3); o.connect(g); g.connect(lp); o.start(t); o.stop(t + .32); };
+  const hit = (t, f, type, dec, lev) => { const src = actx.createBufferSource(); src.buffer = nb; const fl = actx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; const g = actx.createGain(); g.gain.setValueAtTime(lev, t); g.gain.exponentialRampToValueAtTime(.001, t + dec); src.connect(fl); fl.connect(g); g.connect(master); src.start(t, Math.random() * 2); src.stop(t + dec + .02); };
+  const chord = (t, notes, len) => {
+    notes.forEach((f, i) => [0, 1].forEach((j) => { const o = actx.createOscillator(), g = actx.createGain(); o.type = j ? 'triangle' : 'sine'; o.frequency.value = f * (j ? 1.003 : 1); const t1 = t + i * .03; g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(.045, t1 + .04); g.gain.exponentialRampToValueAtTime(.006, t + len); o.connect(g); g.connect(lp); o.start(t1); o.stop(t + len + .05); }));
+    const b = actx.createOscillator(), bg = actx.createGain(); b.frequency.value = notes[0] / 2; bg.gain.setValueAtTime(.15, t); bg.gain.exponentialRampToValueAtTime(.01, t + len); b.connect(bg); bg.connect(lp); b.start(t); b.stop(t + len + .05);
+  };
+  const mel = [523.25, 587.33, 659.25, 783.99, 880];
+  every(() => {
+    while (next < actx.currentTime + .25) {
+      const bar = Math.floor(s / 16) % 4, pos = s % 16, t = next + (pos % 2 ? step * .18 : 0);
+      if (pos === 0) chord(t, CH[bar], step * 16 - .05);
+      if (pos === 0 || pos === 10) kick(t);
+      if (pos === 4 || pos === 12) hit(t, 1800, 'bandpass', .18, .18);
+      if (hats && pos % 2 === 0) hit(t, 8000, 'highpass', .05, .045);
+      if (arp && pos % 2 === 0) pluck(t, CH[bar][(pos / 2) % 4] * 2, { type: 'triangle', level: .045, dec: .5 });
+      if (!hats && (pos === 6 || pos === 14) && Math.random() < .5) pluck(t, mel[Math.floor(Math.random() * mel.length)], { level: .05, dec: 1.6 });
+      next += step; s++;
+    }
+  }, 25);
+}
+function startSound(kind, v) {
+  if (v != null) curVol = v;
+  if (kind === 'spotify') {
+    if (!spotifyLocal) { showExchange('', "to use Spotify here, tap 'find bots on my Mac' in quick (desktop app only)~"); return; }
+    const uri = spotifyUriFrom(store.get('spotUrl', ''));
+    (uri ? spotify.play(uri) : spotify.cmd('play')).then(() => setTimeout(refreshNow, 1500));
+    spotifyStarted = true; return;
+  }
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  actx.resume().catch(() => {});
+  master = actx.createGain(); master.gain.value = 0; master.connect(actx.destination);
+  master.gain.setTargetAtTime(vol(), actx.currentTime, 1.2);
+  if (kind === 'ocean') {
+    noise('brown', 'lowpass', 420, .6, .55, .085, .45);
+    noise('white', 'bandpass', 1400, .4, .05, .07, .045);
+  } else if (kind === 'rain') {
+    noise('white', 'bandpass', 2600, .6, .22, .2, .03);
+    noise('brown', 'lowpass', 300, .5, .4, 0, 0);
+    noise('white', 'highpass', 6000, .5, .03, 0, 0);
+  } else if (kind === 'pads') {
+    pads(CHORDS, .07, 900);
+  } else if (kind === 'brown') {
+    noise('brown', 'lowpass', 900, .5, .75, 0, 0);
+  } else if (LOFI[kind]) {
+    lofi(LOFI[kind]);
+  } else if (kind === 'piano') {
+    const d = makeDelay(.42, .32, .3);
+    pads([[130.81, 196, 261.63], [110, 164.81, 220], [87.31, 130.81, 174.61], [98, 146.83, 196]], .025, 600);
+    const sc = [261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25]; let next = actx.currentTime + .4, idx = 3;
+    every(() => { while (next < actx.currentTime + .3) {
+      idx = Math.max(0, Math.min(sc.length - 1, idx + [-2, -1, -1, 1, 1, 2, 0][Math.floor(Math.random() * 7)]));
+      pluck(next, sc[idx], { level: .12, dec: 3.2, dest: d });
+      if (Math.random() < .25) pluck(next, sc[idx] / 2, { level: .07, dec: 3.6, dest: d });
+      next += [.55, .8, 1.1, 1.6][Math.floor(Math.random() * 4)];
+    } }, 50);
+  } else if (kind === 'musicbox') {
+    const d = makeDelay(.3, .3, .3);
+    const sc = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66]; let next = actx.currentTime + .3, idx = 2, n = 0;
+    every(() => { while (next < actx.currentTime + .3) {
+      idx = Math.max(0, Math.min(sc.length - 1, idx + [-1, 1, -2, 2, 0][Math.floor(Math.random() * 5)]));
+      if (n % 16 < 14) pluck(next, sc[idx], { type: 'triangle', level: .07, dec: 1.6, dest: d });
+      if (n % 4 === 0) pluck(next, sc[0] / 2, { type: 'triangle', level: .05, dec: 1.8, dest: d });
+      next += .36; n++;
+    } }, 50);
+  } else if (kind === 'forest') {
+    noise('brown', 'lowpass', 600, .5, .35, .06, .25);
+    noise('white', 'bandpass', 3000, .5, .015, .1, .012);
+    every(() => {
+      if (Math.random() > .03) return;
+      const t0 = actx.currentTime + .05, base = 2400 + Math.random() * 1600, count = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < count; i++) {
+        const o = actx.createOscillator(), g = actx.createGain(), t = t0 + i * (.1 + Math.random() * .06);
+        o.frequency.setValueAtTime(base, t); o.frequency.exponentialRampToValueAtTime(base * 1.45, t + .07);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.035, t + .01); g.gain.exponentialRampToValueAtTime(.001, t + .09);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t + .1);
+      }
+    }, 150);
+  } else if (kind === 'fire') {
+    noise('brown', 'lowpass', 380, .6, .55, .13, .18);   // warm low roar
+    noise('brown', 'bandpass', 900, .8, .06, .21, .04);  // flicker
+    const nb = noiseBuffer('white');
+    const crack = (t, lev, f, dec) => {
+      const s = actx.createBufferSource(); s.buffer = nb;
+      const fl = actx.createBiquadFilter(); fl.type = 'bandpass'; fl.frequency.value = f; fl.Q.value = 1.2;
+      const g = actx.createGain(); g.gain.setValueAtTime(lev, t); g.gain.exponentialRampToValueAtTime(.0008, t + dec);
+      s.connect(fl); fl.connect(g); g.connect(master); s.start(t, Math.random() * 3); s.stop(t + dec + .02);
+    };
+    every(() => {
+      const t = actx.currentTime + .02;
+      if (Math.random() < .35) crack(t, .05 + Math.random() * .12, 1500 + Math.random() * 3500, .015 + Math.random() * .03);
+      if (Math.random() < .04) { // a little burst of crackles
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 6); i++) crack(t + i * (.02 + Math.random() * .07), .04 + Math.random() * .1, 2000 + Math.random() * 3000, .02);
+      }
+      if (Math.random() < .015) crack(t, .25, 500 + Math.random() * 400, .08); // a deeper wood pop
+    }, 60);
+  } else if (kind === 'night') {
+    noise('brown', 'lowpass', 400, .5, .25, .05, .08);
+    [[4600, 1100], [5200, 1700]].forEach(([f, gap]) => {
+      every(() => {
+        const t0 = actx.currentTime + .02;
+        for (let i = 0; i < 3; i++) {
+          const o = actx.createOscillator(), g = actx.createGain(), t = t0 + i * .07;
+          o.frequency.value = f; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.012, t + .01); g.gain.linearRampToValueAtTime(0, t + .045);
+          o.connect(g); g.connect(master); o.start(t); o.stop(t + .05);
+        }
+      }, gap);
+    });
+  } else if (kind === 'space') {
+    pads(CHORDS.map(c => c.map(f => f / 2)), .06, 500);
+    const d = makeDelay(.6, .45, .35);
+    every(() => {
+      if (Math.random() > .5) return;
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + .05;
+      o.frequency.value = [1046.5, 1318.5, 1568, 1760, 2093][Math.floor(Math.random() * 5)];
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.014, t + 1.5); g.gain.linearRampToValueAtTime(0, t + 5);
+      o.connect(g); g.connect(d); o.start(t); o.stop(t + 5.1);
+    }, 1800);
+  } else if (kind === 'bowls') {
+    const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 98; g.gain.value = .05; o.connect(g); g.connect(master); o.start(); srcs.push(o);
+    const notes = [196, 220, 261.63, 293.66, 329.63];
+    const strike = () => { bowl(notes[Math.floor(Math.random() * notes.length)], 0, .8 + Math.random() * .3); bowlTimer = setTimeout(strike, 7000 + Math.random() * 5000); };
+    strike();
+  }
+}
+function stopSound() {
+  if (spotifyStarted) { spotifyStarted = false; spotify.cmd('pause').catch(() => {}); }
+  clearInterval(padTimer); clearTimeout(bowlTimer); clearInterval(lofiTimer); sched.forEach(clearInterval); sched = [];
+  if (!actx || !master) return;
+  const m = master, old = srcs; srcs = []; master = null;
+  m.gain.setTargetAtTime(0, actx.currentTime, .6);
+  setTimeout(() => { old.forEach(s => { try { s.stop(); } catch {} }); m.disconnect(); }, 3000);
+}
+
+/* breathing guide */
+const PATTERNS = { '446': [['in', 4], ['hold', 4], ['out', 6]], box: [['in', 4], ['hold', 4], ['out', 4], ['hold', 4]], '478': [['in', 4], ['hold', 7], ['out', 8]] };
+const WORDS = { in: 'breathe in…', hold: 'hold…', out: 'breathe out…' };
+function setBreath(sx, sy, secs) {
+  if (o3) { o3.breathe(sx, sy, secs); return; }
+  const sq = $('squish');
+  sq.style.transition = `transform ${secs}s ease-in-out`;
+  sq.style.transform = sx === 1 && sy === 1 ? '' : `scale(${sx}, ${sy})`;
+}
+function breathe(i) {
+  if (!calm.running) return;
+  if (calmSet.breath === 'free') {
+    setBreath(i % 2 ? .95 : 1.06, i % 2 ? .95 : 1.06, 6);
+    if (i % 4 === 0) { showExchange('', pick(['just float with me~', 'nothing to do. nowhere to be.', 'let your shoulders drop…', 'soft and slow, like the sea…'])); }
+    if (i % 2 === 0) { hearts(2, '○'); [...$('petWrap').querySelectorAll('.floater')].forEach(f => f.classList.add('slow')); }
+    calm.bt = setTimeout(() => breathe(i + 1), 6000);
+    return;
+  }
+  const pat = PATTERNS[calmSet.breath], [kind, secs] = pat[i % pat.length];
+  if (kind === 'in') setBreath(1.14, 1.1, secs);
+  if (kind === 'out') setBreath(.93, .95, secs);
+  let left = secs;
+  const say = () => showExchange('', `${WORDS[kind]} ${left}`);
+  say(); clearInterval(calm.ct);
+  calm.ct = setInterval(() => { left--; if (left > 0) say(); }, 1000);
+  if (kind === 'out') { hearts(2, '○'); [...$('petWrap').querySelectorAll('.floater')].forEach(f => f.classList.add('slow')); }
+  calm.bt = setTimeout(() => breathe(i + 1), secs * 1000);
+}
+function calmTick() {
+  const tag = $('timerTag');
+  tag.classList.add('on');
+  if (calm.end) {
+    const left = Math.max(0, Math.round((calm.end - Date.now()) / 1000));
+    tag.textContent = 'calm ' + fmt(left);
+    if (!left) endCalm(true);
+  } else tag.textContent = 'calm · breathe';
+}
+function startCalm(minutes) {
+  if (calm.running || sleep.running) return;
+  if (focus.running) startFocus(); // pause focus while meditating
+  if (tts && speaking) tts.stop().catch(() => {});
+  calm.running = true;
+  const mins = minutes != null ? minutes : +calmSet.len;
+  calm.end = mins ? Date.now() + mins * 60000 : 0;
+  document.body.classList.add('calm'); renderSuggestions([]);
+  setMood('calm'); renderCalm();
+  if (calmSet.sound !== 'none') { stopSound(); startSound(calmSet.sound, calmSet.vol); }
+  showExchange('', 'let\'s slow down together~ get comfy.');
+  clearInterval(calm.iv); calm.iv = setInterval(calmTick, 1000); calmTick();
+  calm.bt = setTimeout(() => breathe(0), 3500);
+  if (hasTray) setTray();
+}
+function endCalm(finished) {
+  if (!calm.running) return;
+  unfold();
+  calm.running = false;
+  clearInterval(calm.iv); clearInterval(calm.ct); clearTimeout(calm.bt);
+  setBreath(1, 1, 2);
+  if (finished && actx && master) bowl(261.63, 0, 1);
+  setTimeout(stopSound, finished ? 2500 : 0);
+  document.body.classList.remove('calm');
+  if (!focus.running && focus.left === focus.total) $('timerTag').classList.remove('on'); else renderFocus();
+  if (finished) { calm.sessions.n++; store.set('calmDone', calm.sessions); }
+  renderCalm();
+  setMood('love');
+  const msg = finished ? 'all done. i hope you feel a little lighter~' : 'okay! come back anytime you need a calm moment.';
+  showExchange('', msg); if (finished) notify('Inky: ' + msg);
+  renderChoices([{ label: 'another round', fn: () => startCalm() }, { label: 'thanks inky ♡', fn: () => { hearts(4); setMood('love'); showExchange('', 'anytime~ ♡'); settleMood(3000); } }]);
+  settleMood(6000);
+  if (hasTray) setTray();
+}
+$('calmStart').onclick = () => (calm.running ? endCalm(false) : startCalm());
+
+/* ---------- ideas ---------- */
+let ideas = store.get('ideas', []);
+function whenLabel(ts) {
+  const d = new Date(ts), now = new Date();
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === now.toDateString() ? 'today ' + time : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+function renderIdeas() {
+  const box = $('ideaList'); box.textContent = '';
+  if (!ideas.length) { const p = document.createElement('div'); p.className = 'muted'; p.textContent = 'no ideas yet. catch one before it swims away!'; box.appendChild(p); }
+  [...ideas].reverse().forEach((it) => {
+    const row = document.createElement('div'); row.className = 'idea';
+    const sp = document.createElement('span'); sp.className = 't'; sp.textContent = it.text;
+    const w = document.createElement('span'); w.className = 'when'; w.textContent = whenLabel(it.ts); sp.appendChild(w);
+    const dev = document.createElement('button'); dev.type = 'button'; dev.className = 'x'; dev.textContent = '✦'; dev.title = 'grow this idea with inky';
+    dev.onclick = () => ask('help me develop this idea a bit (a few angles or a next step): ' + it.text);
+    const toTask = document.createElement('button'); toTask.type = 'button'; toTask.className = 'x'; toTask.textContent = '→'; toTask.title = 'make it a task';
+    toTask.onclick = () => { tasks.push({ text: it.text, done: false }); saveTasks(); ideas = ideas.filter(o => o !== it); saveIdeas(); setMood('happy'); showExchange('', 'moved to your tasks~'); settleMood(2500); };
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.title = 'delete';
+    x.onclick = () => { ideas = ideas.filter(o => o !== it); saveIdeas(); };
+    row.append(sp, dev, toTask, x); box.appendChild(row);
+  });
+  $('ideaCount').textContent = ideas.length ? `${ideas.length} saved` : '';
+}
+function saveIdeas() { store.set('ideas', ideas); renderIdeas(); }
+function saveIdea(text) {
+  text = text.trim(); if (!text) return;
+  ideas.push({ text, ts: Date.now() }); saveIdeas();
+  animate('r-jump'); hearts(4, ['✦', '✧', '★'], '#FFC94D');
+  if (!busy) { setMood('excited'); showExchange('', pick(['ooh, good one! saved~', 'idea caught! it\'s safe in my ideas jar.', 'saved! i love how your brain works~'])); settleMood(3000); }
+}
+$('ideaAdd').onclick = () => { const v = $('ideaNew').value; $('ideaNew').value = ''; saveIdea(v); };
+$('ideaNew').onkeydown = (e) => { if (e.key === 'Enter') $('ideaAdd').click(); };
+$('ideaCopy').onclick = () => {
+  if (!ideas.length) return;
+  const txt = ideas.map(i => `- ${i.text} (${whenLabel(i.ts)})`).join('\n');
+  navigator.clipboard?.writeText(txt).then(() => { setMood('happy'); showExchange('', 'copied all your ideas~'); settleMood(2500); }, () => showExchange('', "couldn't copy here, sorry~"));
+};
+$('ideaOrganize').onclick = () => {
+  if (!ideas.length) { showExchange('', 'save a few ideas first~'); return; }
+  ask('here are my saved ideas: ' + ideas.slice(-25).map(i => i.text).join(' / ') + '. group them into a few themes and tell me which one looks most worth exploring first.');
+};
+renderIdeas();
+
+/* ---------- hand off to other bots ---------- */
+const BOTS = { codex: ['Codex', 'https://chatgpt.com/codex', 'a coding agent: be specific about the repo, files, expected behavior and how to verify'],
+  chatgpt: ['ChatGPT', 'https://chatgpt.com/', 'a general assistant'], gemini: ['Gemini', 'https://gemini.google.com/app', 'a general assistant'],
+  claude: ['Claude', 'https://claude.ai/new', 'a general assistant that can also work with files and tools'] };
+$('botSel').value = store.get('bot2', 'claude');
+$('botSel').onchange = () => store.set('bot2', $('botSel').value);
+function syncBotBtn() {
+  const local = LOCAL[$('botSel').value];
+  $('handoffBtn').textContent = local && local.cmd ? 'ask it' : 'write the prompt';
+  $('botHelp').textContent = local && local.cmd ? `inky sends your message box (or a summary of this chat) to ${local.name} on your Mac and shows you the reply.`
+    : 'inky turns your message box (or this chat) into a prompt, then you copy it and open the bot.';
+}
+$('botSel').addEventListener('change', syncBotBtn);
+$('handoffBtn').onclick = async () => {
+  if (busy) return;
+  if (LOCAL[$('botSel').value]) return askLocal($('botSel').value);
+  const [name, url, hint] = BOTS[$('botSel').value];
+  const typed = $('msg').value.trim();
+  const convo = history.slice(-10).map(m => (m.role === 'user' ? 'Human' : 'Inky') + ': ' + m.text).join('\n');
+  if (!typed && !convo) { setMood('thinking'); showExchange('', `type what you want ${name} to do in the box first, then tap 'write the prompt'~`); settleMood(4000); return; }
+  const s = sampleFn || await samplePromise;
+  if (!s) { setMood('sad'); showExchange('', "i can't write prompts from here, sorry~"); return; }
+  busy = true; $('send').disabled = true; $('msg').value = ''; setMood('thinking'); showExchange(typed, `writing a prompt for ${name}…`); renderSuggestions([]);
+  try {
+    const res = await s(`Write a clear, self-contained prompt that a person will paste into ${name} (${hint}). Base it on ${typed ? 'their request' : 'the conversation below'}. Include the goal, any context and constraints mentioned, and what a good result looks like. Do not invent facts or details that are not given; where something important is unknown, add a short bracketed placeholder like [your repo name]. Output ONLY the prompt text, no preamble.\n\n${typed ? 'Their request: ' + typed + '\n\n' : ''}${convo ? 'Recent conversation:\n' + convo : ''}`, { modelTier: 'default', cache: false });
+    const prompt = (res.text || '').trim();
+    busy = false; $('send').disabled = false;
+    setMood('excited'); showExchange('', prompt);
+    renderChoices([
+      { label: `copy & open ${name} ↗`, go: true, href: url, fn: () => { navigator.clipboard?.writeText(prompt).catch(() => {}); setTimeout(() => { setMood('love'); showExchange('', `copied! paste it into ${name} (⌘V)~`); }, 50); } },
+      { label: 'just copy', fn: () => { navigator.clipboard?.writeText(prompt).then(() => showExchange('', 'copied~'), () => showExchange('', "couldn't copy, select the text above instead")); } },
+    ]);
+    settleMood(5000);
+  } catch (e) { busy = false; $('send').disabled = false; setMood('sad'); showExchange('', 'my tentacles got tangled. try again?'); }
+};
+
+/* ---------- bots on this Mac (needs full access in the desktop app) ---------- */
+const LOCAL = {};
+var spotifyLocal = false, spotifyStarted = false;
+const SPOT_URI = /^spotify:(playlist|album|track|artist|show|episode):[A-Za-z0-9]+$/;
+function spotifyUriFrom(url) {
+  const m = (url || '').match(/^https:\/\/open\.spotify\.com\/(?:intl-[a-z]+\/)?(playlist|album|track|artist|show|episode)\/([A-Za-z0-9]+)/);
+  return m ? `spotify:${m[1]}:${m[2]}` : '';
+}
+const osa = (script) => sh('osascript', script, 15000);
+const spotify = {
+  play(uri) { return SPOT_URI.test(uri) ? osa(`tell application "Spotify" to play track "${uri}"`) : Promise.resolve(); },
+  cmd(c) { return osa(`tell application "Spotify" to ${c}`); },
+  search(q) { return sh(`open "spotify:search:${encodeURIComponent(q)}"`, null, 10000); },
+  async now() {
+    const r = await osa('tell application "Spotify"\nif player state is playing then\nreturn (name of current track) & " · " & (artist of current track)\nelse\nreturn ""\nend if\nend tell');
+    return r.out.trim();
+  },
+};
+async function refreshNow() {
+  if (!spotifyLocal) return;
+  const s = await spotify.now().catch(() => '');
+  document.querySelectorAll('.nowPlaying').forEach(el => { el.textContent = s ? '♪ ' + s : 'Spotify is paused'; });
+}
+const LOCAL_DEFS = {
+  claudecode: { name: 'Claude Code', bin: 'claude', cmd: 'claude -p --output-format text' },
+  codexcli: { name: 'Codex CLI', bin: 'codex', cmd: 'codex exec --skip-git-repo-check --sandbox read-only -' },
+  geminicli: { name: 'Gemini CLI', bin: 'gemini', cmd: 'gemini' },
+  ollama: { name: 'Ollama', bin: 'ollama', cmd: null },
+  chatgptapp: { name: 'ChatGPT app', app: 'ChatGPT' },
+};
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\r/g, '');
+function sh(cmd, input, timeoutMs = 180000) {
+  return new Promise((resolve) => {
+    let out = '', err = '', done = false;
+    const p = desktop.childProcess.spawn('/bin/zsh', ['-lc', cmd], { cwd: '~' });
+    const timer = setTimeout(() => { if (!done) { p.kill().catch(() => {}); err += '\n(timed out)'; } }, timeoutMs);
+    p.stdout.on('data', (c) => { out += c; });
+    p.stderr.on('data', (c) => { err += c; });
+    p.on('error', (e) => { if (!done) { done = true; clearTimeout(timer); resolve({ out, err: err + String(e && e.message || e), code: -1 }); } });
+    p.on('close', (code) => { if (!done) { done = true; clearTimeout(timer); resolve({ out: stripAnsi(out), err: stripAnsi(err), code }); } });
+    if (input != null) p.stdin.write(input).then(() => p.stdin.end()).catch(() => {});
+  });
+}
+async function findLocalBots(quiet) {
+  if (!desktop?.childProcess) return;
+  const st = await desktop.permissions.state('full-access').catch(() => 'unavailable');
+  if (st !== 'granted') {
+    if (quiet) return;
+    const r = await desktop.permissions.request(['full-access']).catch(() => ({}));
+    if (r['full-access'] !== 'granted') { setMood('sad'); showExchange('', "okay! without full access i can only hand off on the web, and open Spotify by link~"); return; }
+  }
+  if (!quiet) { setMood('thinking'); showExchange('', 'looking around your Mac for bot friends…'); }
+  const r = await sh('for b in claude codex gemini ollama; do command -v $b >/dev/null 2>&1 && echo $b; done; [ -d /Applications/ChatGPT.app ] && echo chatgptapp; [ -d /Applications/Spotify.app ] && echo spotifyapp; command -v ollama >/dev/null 2>&1 && ollama list 2>/dev/null | awk \'NR==2{print "model:"$1}\'', null, 20000);
+  const lines = r.out.split('\n').map(s => s.trim()).filter(Boolean);
+  const model = (lines.find(l => l.startsWith('model:')) || '').slice(6);
+  Object.keys(LOCAL).forEach(k => delete LOCAL[k]);
+  const grp = $('localBots'); grp.textContent = '';
+  Object.entries(LOCAL_DEFS).forEach(([k, d]) => {
+    const found = d.app ? lines.includes('chatgptapp') : lines.includes(d.bin);
+    if (!found) return;
+    if (k === 'ollama') { if (!model || !/^[\w.:\-\/]+$/.test(model)) return; LOCAL[k] = { ...d, name: `Ollama (${model})`, cmd: `ollama run ${model}` }; }
+    else LOCAL[k] = { ...d };
+    const o = document.createElement('option'); o.value = k; o.textContent = LOCAL[k].name; grp.appendChild(o);
+  });
+  spotifyLocal = lines.includes('spotifyapp'); renderSpot();
+  const names = Object.values(LOCAL).map(b => b.name).concat(spotifyLocal ? ['Spotify'] : []);
+  if (!quiet) { setMood(names.length ? 'excited' : 'neutral'); showExchange('', names.length ? `found: ${names.join(', ')}! pick one in the list~` : "i couldn't find any bots i know how to talk to (Claude Code, Codex CLI, Gemini CLI, Ollama or the ChatGPT app)."); settleMood(4000); }
+  syncBotBtn();
+}
+async function askLocal(key) {
+  const bot = LOCAL[key];
+  let prompt = $('msg').value.trim();
+  if (!prompt) {
+    const last = history.slice(-6).map(m => (m.role === 'user' ? 'Me' : 'Inky') + ': ' + m.text).join('\n');
+    if (!last) { setMood('thinking'); showExchange('', `type what you want to ask ${bot.name} in the box first~`); settleMood(3000); return; }
+    prompt = 'Here is a short conversation I had. Please help with it:\n\n' + last;
+  }
+  $('msg').value = '';
+  if (bot.app) { // a desktop app: copy and open it
+    navigator.clipboard?.writeText(prompt).catch(() => {});
+    await sh(`open -a "${bot.app}"`, null, 10000);
+    setMood('happy'); showExchange(prompt, `opened ${bot.name}, and your message is copied. paste it in (⌘V)~`); settleMood(3000);
+    return;
+  }
+  busy = true; $('send').disabled = true; renderSuggestions([]);
+  setMood('thinking'); showExchange(prompt, `asking ${bot.name}… (this can take a minute)`);
+  const r = await sh(bot.cmd, prompt);
+  busy = false; $('send').disabled = false;
+  const reply = (r.out.trim() || '').slice(-3000);
+  if (!reply) {
+    setMood('sad'); showExchange(prompt, `${bot.name} didn't answer. ${r.err.trim().split('\n').slice(-2).join(' ').slice(0, 200)}`); settleMood(5000); return;
+  }
+  history.push({ role: 'user', text: `(to ${bot.name}) ${prompt}` }, { role: 'inky', text: `${bot.name} said: ${reply.slice(0, 1200)}` });
+  store.set('history', history.slice(-30));
+  setMood('excited'); showExchange(`(to ${bot.name}) ${prompt}`, `${bot.name} says:\n${reply}`);
+  renderChoices([
+    { label: 'what do you think, inky?', go: true, fn: () => ask(`what do you think of what ${bot.name} said?`) },
+    { label: 'copy reply', fn: () => navigator.clipboard?.writeText(reply).then(() => showExchange('', 'copied~'), () => {}) },
+  ]);
+  if (!document.hasFocus()) notify(`${bot.name} replied: ${reply.slice(0, 200)}`);
+  settleMood(5000);
+}
+$('findBots').onclick = () => findLocalBots(false);
+
+/* ---------- move around the screen ---------- */
+function moveTo(anchor) {
+  if (!desktop?.window) return;
+  desktop.window.place({ anchor, margin: 20 }).catch(() => {});
+}
+document.querySelectorAll('[data-place]').forEach(b => b.onclick = () => moveTo(b.dataset.place));
+
+/* ---------- time of day ---------- */
+function sunTimes(date, lat, lon) {
+  const rad = Math.PI / 180, dayMs = 864e5, J1970 = 2440588, J2000 = 2451545, J0 = .0009;
+  const toDays = (d) => d.valueOf() / dayMs - .5 + J1970 - J2000;
+  const fromJ = (j) => new Date((j + .5 - J1970) * dayMs);
+  const lw = -lon * rad, phi = lat * rad, d = toDays(date);
+  const n = Math.round(d - J0 - lw / (2 * Math.PI));
+  const ds = J0 + lw / (2 * Math.PI) + n;
+  const M = rad * (357.5291 + .98560028 * ds);
+  const C = rad * (1.9148 * Math.sin(M) + .02 * Math.sin(2 * M) + .0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397));
+  const noon = J2000 + ds + .0053 * Math.sin(M) - .0069 * Math.sin(2 * L);
+  const w = Math.acos((Math.sin(-.833 * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec)));
+  const set = J2000 + J0 + (w + lw) / (2 * Math.PI) + n + .0053 * Math.sin(M) - .0069 * Math.sin(2 * L);
+  return { rise: fromJ(noon - (set - noon)), set: fromJ(set) };
+}
+// location for sunset: Toronto when the computer is on Toronto time, otherwise a guess from the time zone
+const LOC = (() => {
+  let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+  if (tz === 'America/Toronto') return [43.65, -79.38];
+  return [45, -new Date().getTimezoneOffset() / 4];
+})();
+let period = '', themeMode = store.get('theme', 'auto'), lookMode = store.get('look', 'auto');
+$('lookSel').value = lookMode;
+$('lookSel').onchange = () => { lookMode = $('lookSel').value; store.set('look', lookMode); applyTime(true); };
+$('themeSel').value = themeMode;
+$('themeSel').onchange = () => { themeMode = $('themeSel').value; store.set('theme', themeMode); applyTime(true); };
+const GREET = {
+  morning: ['good morning~ tap ☀ wake for your morning routine!', 'rise and shine! i made you a mental coffee. want to do your morning routine?'],
+  afternoon: ['good afternoon! sunglasses on, let\'s get stuff done~', 'afternoon check-in: have you had water?'],
+  evening: ['the sun\'s going down~ time to slow down a little.', 'cozy evening mode: scarf on!'],
+  night: ["it's late~ want to start your sleep routine soon?", 'the stars are out. tap calm → sleep routine when you\'re ready~'],
+};
+function applyTime(quiet) {
+  const now = new Date(), { rise, set } = sunTimes(now, LOC[0], LOC[1]);
+  const h = now.getHours() + now.getMinutes() / 60;
+  const eveStart = new Date(Math.min(set - 90 * 60000, new Date(now).setHours(18, 0, 0, 0)));
+  let p;
+  if (h >= 23 || (h < 12 && now < rise)) p = 'night';
+  else if (h < 12) p = 'morning';
+  else if (now >= eveStart) p = 'evening';
+  else p = 'afternoon';
+  if (lookMode !== 'auto') p = lookMode;
+  const afterDark = now < rise || now >= set;
+  const dark = sleep.running || themeMode === 'dark' || (themeMode === 'auto' && afterDark);
+  document.body.classList.toggle('dark', dark);
+  ['morning', 'afternoon', 'evening', 'night'].forEach(x => document.body.classList.toggle('t-' + x, x === p));
+  if (p !== period) {
+    const first = !period; period = p;
+    if (o3 && !sleep.running) o3.setTime(p);
+    if (!first && !quiet && !busy && !calm.running && !sleep.running) { unfold(); setMood('happy'); showExchange('', pick(GREET[p])); settleMood(5000); }
+  }
+}
+applyTime(true);
+setInterval(() => applyTime(false), 60000);
+store.get('greetDay', '') !== today() && setTimeout(() => { store.set('greetDay', today()); showExchange('', pick(GREET[period])); }, 400);
+
+/* ---------- sleep routine ---------- */
+const SLEEP_STEPS = [
+  { k: 'lights', label: 'dim the lights', say: "first, let's make it cozy: dim or turn off the bright lights~" },
+  { k: 'water', label: 'drink some water', say: 'have a few sips of water. tiny octopus orders.' },
+  { k: 'clothes', label: "lay out tomorrow's clothes", say: 'pick out your clothes for tomorrow, so morning-you can relax.' },
+  { k: 'teeth', label: 'brush your teeth', say: "brush brush brush~ i can time two minutes for you." },
+  { k: 'journal', label: 'sleep journal', say: 'want to write in your sleep journal? just a few words is perfect.' },
+  { k: 'sleep', label: 'lights out', say: "all ready. snuggle in… i'll keep the music soft." },
+];
+const sleepSet = Object.assign({ sound: 'night', timer: '30' }, store.get('sleepSet', {}));
+$('sleepSound').value = sleepSet.sound; $('sleepTimer').value = sleepSet.timer;
+$('sleepSound').onchange = () => { sleepSet.sound = $('sleepSound').value; store.set('sleepSet', sleepSet); if (sleep.running) { stopSound(); if (sleepSet.sound !== 'none') startSound(sleepSet.sound, 35); } };
+$('sleepTimer').onchange = () => { sleepSet.timer = $('sleepTimer').value; store.set('sleepSet', sleepSet); };
+let journal = store.get('journal', []);
+let sleepBreathT = null, sleepMusicT = null, teethT = null;
+function renderSleep() {
+  const box = $('sleepSteps'); box.textContent = '';
+  if (sleep.running) SLEEP_STEPS.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'sstep' + (sleep.done[s.k] ? ' done' : '') + (i === sleep.step && !sleep.asleep ? ' cur' : '');
+    const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = sleep.done[s.k] ? '✓' : '';
+    const tx = document.createElement('span'); tx.className = 'tx'; tx.textContent = s.label;
+    row.append(ic, tx);
+    row.onclick = () => { if (s.k === 'sleep') { goodnight(); return; } sleep.done[s.k] = !sleep.done[s.k]; if (sleep.done[s.k] && i === sleep.step) nextSleepStep(); else renderSleep(); };
+    box.appendChild(row);
+  });
+  $('sleepStart').textContent = sleep.running ? (sleep.asleep ? "i'm awake" : 'end routine') : 'start sleep routine';
+  $('sleepNote').textContent = sleep.running ? (sleep.asleep ? 'sleeping' : `${Object.keys(sleep.done).length}/${SLEEP_STEPS.length - 1} done`) : '';
+  const jl = $('jList'); jl.textContent = '';
+  if (!journal.length) { const p = document.createElement('div'); p.className = 'muted'; p.textContent = 'no entries yet.'; jl.appendChild(p); }
+  [...journal].reverse().slice(0, 14).forEach((e) => { const d = document.createElement('div'); d.className = 'jentry'; d.textContent = journalText(e); jl.appendChild(d); });
+}
+function journalText(e) {
+  return [new Date(e.ts).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+    e.good && '♡ good thing: ' + e.good, e.mind && '☁ on my mind: ' + e.mind, e.next && '→ tomorrow: ' + e.next].filter(Boolean).join('\n');
+}
+function sleepBreath(i = 0) { setBreath(i % 2 ? .96 : 1.05, i % 2 ? .96 : 1.05, 5); sleepBreathT = setTimeout(() => sleepBreath(i + 1), 5000); }
+function startSleep() {
+  if (sleep.running) return;
+  if (morn.running) endMorning(true);
+  if (calm.running) { calm.running = false; clearInterval(calm.iv); clearInterval(calm.ct); clearTimeout(calm.bt); }
+  if (focus.running) startFocus();
+  stopSound();
+  Object.assign(sleep, { running: true, step: 0, done: {}, asleep: false });
+  document.body.classList.add('calm', 'sleep'); applyTime(true);
+  if (o3) o3.setTime('sleep');
+  unfold(); if (tab !== 'sleep') openTab('sleep');
+  if (sleepSet.sound !== 'none') startSound(sleepSet.sound, 35);
+  setMood('calm'); renderSuggestions([]); $('timerTag').classList.add('on'); $('timerTag').textContent = '☾ bedtime';
+  clearTimeout(sleepBreathT); sleepBreath();
+  showExchange('', "bedtime routine~ let's wind down together.");
+  setTimeout(() => sleep.running && showSleepStep(), 2200);
+  renderSleep(); if (hasTray) setTray();
+}
+function showSleepStep() {
+  const s = SLEEP_STEPS[sleep.step]; if (!s) return;
+  renderSleep();
+  $('journal').classList.add('hidden');
+  showExchange('', s.say);
+  const done = { label: 'done ✓', go: true, fn: () => { sleep.done[s.k] = true; nextSleepStep(); } };
+  const skip = { label: 'skip', fn: () => nextSleepStep() };
+  if (s.k === 'teeth') renderChoices([done, { label: '2 min timer', fn: teethTimer }, skip]);
+  else if (s.k === 'journal') renderChoices([{ label: 'write in my journal', go: true, fn: () => { $('journal').classList.remove('hidden'); if (tab !== 'sleep') openTab('sleep'); $('j1').focus(); showExchange('', 'take your time~ no right answers.'); } }, skip]);
+  else if (s.k === 'sleep') renderChoices([{ label: 'goodnight inky ♡', go: true, fn: goodnight }]);
+  else renderChoices([done, skip]);
+}
+function nextSleepStep() {
+  if (!sleep.running) return;
+  hearts(2, '✧', '#9fc3ec');
+  sleep.step = Math.min(SLEEP_STEPS.length - 1, sleep.step + 1);
+  showSleepStep();
+}
+function teethTimer() {
+  let left = 120; clearInterval(teethT);
+  const tick = () => {
+    showExchange('', `brushing… ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}  (top, bottom, little circles~)`);
+    if (left-- <= 0) { clearInterval(teethT); sleep.done.teeth = true; notify('Inky: sparkly teeth! all done.'); nextSleepStep(); }
+  };
+  tick(); teethT = setInterval(tick, 1000);
+  renderChoices([{ label: 'done early ✓', fn: () => { clearInterval(teethT); sleep.done.teeth = true; nextSleepStep(); } }]);
+}
+$('jSave').onclick = () => {
+  const e = { ts: Date.now(), good: $('j1').value.trim(), mind: $('j2').value.trim(), next: $('j3').value.trim() };
+  if (e.good || e.mind || e.next) { journal.push(e); store.set('journal', journal.slice(-200)); }
+  ['j1', 'j2', 'j3'].forEach(id => { $(id).value = ''; });
+  $('journal').classList.add('hidden');
+  if (sleep.running) { sleep.done.journal = true; showExchange('', 'saved. your thoughts can rest now too~'); setTimeout(nextSleepStep, 1500); } else renderSleep();
+};
+$('jSkip').onclick = () => { $('journal').classList.add('hidden'); if (sleep.running) nextSleepStep(); };
+$('jCopy').onclick = () => { if (!journal.length) return; navigator.clipboard?.writeText(journal.map(journalText).join('\n\n')).then(() => showExchange('', 'copied your journal~'), () => {}); };
+function goodnight() {
+  sleep.asleep = true; sleep.done.sleep = true;
+  renderSuggestions([]); setMood('sleepy'); showExchange('', 'goodnight~ sweet dreams. zzz…');
+  $('timerTag').textContent = '☾ sleeping';
+  clearTimeout(sleepMusicT);
+  const mins = +sleepSet.timer;
+  if (mins) sleepMusicT = setTimeout(() => { if (sleep.running) { if (master && actx) master.gain.setTargetAtTime(0, actx.currentTime, 20); setTimeout(stopSound, 60000); } }, mins * 60000);
+  renderSleep();
+  setTimeout(() => { if (sleep.asleep) setFolded(true); }, 4000);
+}
+function endSleep() {
+  if (!sleep.running) return;
+  clearTimeout(sleepBreathT); clearTimeout(sleepMusicT); clearInterval(teethT);
+  sleep.running = false; sleep.asleep = false;
+  stopSound(); setBreath(1, 1, 2);
+  document.body.classList.remove('calm', 'sleep');
+  $('timerTag').classList.remove('on'); period = ''; applyTime(true); if (o3) o3.setTime(period);
+  $('journal').classList.add('hidden');
+  unfold(); setMood('happy'); renderSuggestions([]);
+  showExchange('', new Date().getHours() < 12 ? 'good morning, sleepyhead~ i missed you!' : 'okay! routine ended. here whenever you need me~');
+  settleMood(4000); renderSleep(); if (hasTray) setTray();
+}
+$('sleepStart').onclick = () => (sleep.running ? endSleep() : startSleep());
+$('toSleep').onclick = () => openTab('sleep');
+$('sleepNav').onclick = () => {
+  if (!sleep.running) startSleep();
+  else if (tab !== 'sleep') openTab('sleep');
+  else openTab('sleep'); // tap again to close the panel
+};
+renderSleep();
+
+/* ---------- morning routine ---------- */
+const MORN_STEPS = [
+  { k: 'teeth', label: 'brush your teeth', say: "good morning~ let's start fresh: brush your teeth! i can time two minutes." },
+  { k: 'tasks', label: 'go over your tasks', say: '' },
+  { k: 'music', label: 'wake-up music', say: "music's on~ turn it up a little if you need a boost!" },
+  { k: 'move', label: 'simple exercise', say: 'time to wake up the body: a 2½-minute mini workout. ready?' },
+  { k: 'sun', label: 'get some sunlight', say: 'step outside (or by a window) for a few minutes of sunlight. it helps your body clock wake up~' },
+  { k: 'food', label: 'have breakfast', say: 'last one: breakfast time! something yummy and some water too.' },
+];
+const MOVES = [['arm circles', 'r-spin'], ['shoulder rolls', 'r-wiggle'], ['gentle squats', 'r-jump'], ['side stretches', 'r-dance'], ['march in place', 'r-frenzy']];
+const mornSet = Object.assign({ sound: 'wake' }, store.get('mornSet', {}));
+$('mornSound').value = mornSet.sound;
+$('mornSound').onchange = () => { mornSet.sound = $('mornSound').value; store.set('mornSet', mornSet); if (morn.running) { stopSound(); if (mornSet.sound !== 'none') startSound(mornSet.sound, 50); } };
+let mornT = null;
+function countdown(secs, say, onDone) {
+  clearInterval(mornT); let left = secs;
+  const tick = () => { say(left); if (left-- <= 0) { clearInterval(mornT); onDone(); } };
+  tick(); mornT = setInterval(tick, 1000);
+}
+const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+function renderMorning() {
+  const box = $('mornSteps'); box.textContent = '';
+  if (morn.running) MORN_STEPS.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'sstep' + (morn.done[s.k] ? ' done' : '') + (i === morn.step ? ' cur' : '');
+    const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = morn.done[s.k] ? '✓' : '';
+    const tx = document.createElement('span'); tx.className = 'tx'; tx.textContent = s.label;
+    row.append(ic, tx);
+    row.onclick = () => { morn.done[s.k] = !morn.done[s.k]; if (morn.done[s.k] && i === morn.step) nextMorning(); else renderMorning(); };
+    box.appendChild(row);
+  });
+  $('mornStart').textContent = morn.running ? 'end routine' : 'start morning routine';
+  $('mornNote').textContent = morn.running ? `${Object.keys(morn.done).length}/${MORN_STEPS.length} done` : '';
+}
+function startMorning() {
+  if (morn.running) return;
+  if (sleep.running) endSleep();
+  if (calm.running) endCalm(false);
+  if (focus.running) startFocus();
+  stopSound();
+  Object.assign(morn, { running: true, step: 0, done: {} });
+  unfold(); if (tab !== 'morning') openTab('morning');
+  if (o3) o3.setTime('morning');
+  if (mornSet.sound !== 'none') startSound(mornSet.sound, 50);
+  animate('r-jump'); setMood('excited'); renderSuggestions([]);
+  $('timerTag').classList.add('on'); $('timerTag').textContent = '☀ morning';
+  showExchange('', pick(["good morning, sunshine~ let's start the day together!", 'rise and shine! morning routine, here we go~']));
+  setTimeout(() => morn.running && showMorningStep(), 2200);
+  renderMorning(); if (hasTray) setTray();
+}
+function showMorningStep() {
+  const s = MORN_STEPS[morn.step]; if (!s) return;
+  renderMorning(); clearInterval(mornT);
+  const done = { label: 'done ✓', go: true, fn: () => { morn.done[s.k] = true; nextMorning(); } };
+  const skip = { label: 'skip', fn: () => nextMorning() };
+  setMood('happy');
+  if (s.k === 'teeth') {
+    showExchange('', s.say);
+    renderChoices([done, { label: '2 min timer', fn: () => {
+      countdown(120, (l) => showExchange('', `brushing… ${mmss(l)}  (top, bottom, little circles~)`), () => { morn.done.teeth = true; notify('Inky: sparkly morning teeth!'); nextMorning(); });
+      renderChoices([{ label: 'done early ✓', fn: () => { clearInterval(mornT); morn.done.teeth = true; nextMorning(); } }]);
+    } }, skip]);
+  } else if (s.k === 'tasks') {
+    const open = tasks.filter(x => !x.done);
+    showExchange('', open.length ? `here's what's on your list today:\n${open.slice(0, 6).map((x, i) => `${i + 1}. ${x.text}`).join('\n')}${open.length > 6 ? `\n…and ${open.length - 6} more` : ''}` : "your task list is empty! want to add what you'd like to get done today?");
+    renderChoices([done, { label: open.length ? 'which one first?' : 'add tasks', fn: () => { if (open.length) ask('which of my open tasks should i do first today, and why?'); else openTab('tasks'); } }, skip]);
+  } else if (s.k === 'music') {
+    showExchange('', mornSet.sound === 'none' ? 'want some wake-up music? pick one in the list above, or open Spotify~' : s.say);
+    renderChoices([done, skip]);
+  } else if (s.k === 'move') {
+    showExchange('', s.say);
+    renderChoices([{ label: 'start workout', go: true, fn: () => workout(0) }, { label: 'done ✓', fn: () => { morn.done.move = true; nextMorning(); } }, skip]);
+  } else if (s.k === 'sun') {
+    showExchange('', s.say);
+    renderChoices([{ label: '5 min sunlight timer', go: true, fn: () => {
+      countdown(300, (l) => showExchange('', `soaking up the sun… ${mmss(l)} ☀`), () => { morn.done.sun = true; notify('Inky: sunlight done! welcome back~'); nextMorning(); });
+      renderChoices([{ label: "i'm back ✓", fn: () => { clearInterval(mornT); morn.done.sun = true; nextMorning(); } }]);
+    } }, { label: 'done ✓', fn: () => { morn.done.sun = true; nextMorning(); } }, skip]);
+  } else if (s.k === 'food') {
+    showExchange('', s.say);
+    renderChoices([{ label: 'ate breakfast ✓', go: true, fn: () => { morn.done.food = true; finishMorning(); } }, { label: 'skip', fn: finishMorning }]);
+  }
+}
+function workout(i) {
+  if (!morn.running) return;
+  if (i >= MOVES.length) { morn.done.move = true; hearts(5, ['★', '✦'], RAINBOW); showExchange('', "workout done! you're officially awake~"); setTimeout(nextMorning, 1800); return; }
+  const [name, anim] = MOVES[i];
+  renderChoices([{ label: 'next move', fn: () => { clearInterval(mornT); workout(i + 1); } }, { label: 'stop', fn: () => { clearInterval(mornT); showMorningStep(); } }]);
+  let n = 0;
+  countdown(30, (l) => { showExchange('', `${i + 1}/${MOVES.length}: ${name}… ${l}s`); if (n++ % 3 === 0) animate(anim); }, () => workout(i + 1));
+}
+function nextMorning() {
+  if (!morn.running) return;
+  hearts(2, '✦', '#FFC94D');
+  if (morn.step >= MORN_STEPS.length - 1) return finishMorning();
+  morn.step++; showMorningStep();
+}
+function finishMorning() {
+  const n = Object.keys(morn.done).length;
+  endMorning(true);
+  animate('r-dance'); setMood('love'); hearts(6, ['♥', '★', '✿'], RAINBOW);
+  showExchange('', n >= 5 ? `morning routine complete (${n}/${MORN_STEPS.length})! you're ready for today~` : `nice start (${n}/${MORN_STEPS.length})! have a lovely day~`);
+  renderChoices([{ label: 'start focus', fn: () => { openTab('focus'); } }, { label: 'thanks inky ♡', fn: () => { setMood('love'); showExchange('', 'go get them~'); settleMood(3000); } }]);
+  settleMood(6000);
+}
+function endMorning(quiet) {
+  if (!morn.running) return;
+  morn.running = false; clearInterval(mornT); stopSound();
+  $('timerTag').classList.remove('on');
+  period = ''; applyTime(true); if (o3) o3.setTime(period);
+  renderMorning(); if (hasTray) setTray();
+  if (!quiet) { setMood('happy'); showExchange('', 'okay! morning routine ended~'); settleMood(3000); }
+}
+$('mornStart').onclick = () => (morn.running ? endMorning(false) : startMorning());
+$('wakeNav').onclick = () => { if (!morn.running) startMorning(); else openTab('morning'); };
+renderMorning();
+
+/* ---------- icons ---------- */
+function svgToPng(svgText, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = size; c.getContext('2d').drawImage(img, 0, 0, size, size); resolve(c.toDataURL('image/png')); };
+    img.onerror = reject;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+  });
+}
+function appIcon() {
+  if (o3) { try { return Promise.resolve(o3.icon()); } catch {} }
+  const clone = octo.cloneNode(true); applyMood(clone, 'happy');
+  clone.querySelectorAll('[class]').forEach(el => el.removeAttribute('class'));
+  return svgToPng(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF4EC"/><stop offset="1" stop-color="#F9CDBB"/></linearGradient></defs>
+    <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/><g transform="translate(28 22)">${clone.innerHTML}</g></svg>`, 256);
+}
+function trayIcon() {
+  const c = document.createElement('canvas'); c.width = c.height = 36; const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineWidth = 3.4;
+  g.beginPath(); g.ellipse(18, 14, 11, 10, 0, 0, Math.PI * 2); g.fill();
+  [[12, 30, 6], [15, 33, 12], [21, 33, 24], [24, 30, 30]].forEach(([x1, y, x2]) => {
+    g.beginPath(); g.moveTo(x1, 20); g.quadraticCurveTo(x1 + (x2 - x1) * .3, y, x2, y - 2); g.stroke();
+  });
+  g.globalCompositeOperation = 'destination-out';
+  g.beginPath(); g.arc(14, 14, 2, 0, 7); g.arc(22, 14, 2, 0, 7); g.fill();
+  return c.toDataURL('image/png');
+}
+const TRAY_ICON = trayIcon();
+
+/* ---------- desktop app ---------- */
+const FLOAT = { frame: false, transparent: true, alwaysOnTop: true, hasShadow: false, resizable: false, dragHeight: 0, width: 280, height: 700 };
+const WINDOWED = { titleBarStyle: 'hiddenInset', resizable: false, width: 300, height: 780 };
+
+function summon() { unfold(); desktop.window.show().catch(() => {}); setTimeout(() => $('msg').focus(), 80); }
+async function setTray() {
+  const quickItems = quick.slice(0, 6).map(q => ({ label: q, click: () => { summon(); ask(q); } }));
+  try {
+    await desktop.tray.set({
+      icon: TRAY_ICON,
+      title: focus.running ? fmt(focus.left).replace(/^0/, '').slice(0, -3) + 'm' : '',
+      toolTip: 'your octopus buddy',
+      menu: [
+        { label: 'Talk to Inky', click: summon },
+        { label: 'Quick instructions', submenu: quickItems.length ? quickItems : [{ label: '(none yet)', enabled: false }] },
+        { type: 'separator' },
+        focus.running
+          ? { label: 'Pause focus', click: startFocus }
+          : { label: focus.left < focus.total ? 'Resume focus' : 'Start 25 min focus', click: () => { if (focus.left === focus.total) setPreset(25, false); startFocus(); } },
+        { label: 'Start 5 min break', enabled: !focus.running, click: () => { setPreset(5, true); startFocus(); } },
+        { label: 'Tasks…', click: () => { summon(); if (tab !== 'tasks') openTab('tasks'); } },
+        { label: 'Jot an idea…', click: () => { summon(); if (tab !== 'ideas') openTab('ideas'); setTimeout(() => $('ideaNew').focus(), 120); } },
+        calm.running ? { label: 'End meditation', click: () => endCalm(false) } : { label: 'Meditate 5 min', click: () => { summon(); startCalm(5); } },
+        morn.running ? { label: 'End morning routine', click: () => endMorning(false) } : { label: 'Morning routine', click: () => { summon(); startMorning(); } },
+        sleep.running ? { label: 'End sleep routine', click: endSleep } : { label: 'Sleep routine', click: () => { summon(); startSleep(); } },
+        { type: 'separator' },
+        { label: 'Move Inky to', submenu: [['Top left', 'top_left'], ['Top right', 'top_right'], ['Center', 'center'], ['Bottom left', 'bottom_left'], ['Bottom right', 'bottom_right']].map(([label, a]) => ({ label, click: () => moveTo(a) })) },
+        { label: 'Open Claude', href: 'https://claude.ai/new' },
+        { label: 'Pat Inky', click: () => { desktop.window.show().catch(() => {}); pet(); } },
+        { label: 'Tuck Inky away', click: () => desktop.window.hide().catch(() => {}) },
+      ]
+    });
+    hasTray = true; $('hideBtn').classList.remove('hidden');
+  } catch {}
+}
+async function enableExtras(st) {
+  if (st['menu-bar'] === 'granted' && !hasTray) setTray();
+  if (st.notifications === 'granted') canNotify = true;
+  if (st.shortcuts === 'granted') desktop.globalShortcut.register('Alt+Shift+I', summon).catch(() => {});
+}
+async function goFloat() {
+  try {
+    const r = await desktop.window.setOptions(FLOAT);
+    if (r.reloading) return;
+    if (r.applied === 'next_open') { showExchange('', "almost! quit me (cmd+q) and open me again and i'll float~"); return; }
+    document.body.classList.add('float');
+    new ResizeObserver(fitWindow).observe($('stage')); fitWindow();
+    desktop.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }).catch(() => {});
+    if (!store.get('placed', false)) { await desktop.window.place({ anchor: 'bottom_right', margin: 20 }).catch(() => {}); store.set('placed', true); }
+  } catch (e) { console.warn(e); }
+}
+
+(async () => {
+  if (!window.claude) return;
+  desktop = await claude.use('desktop').catch(() => null);
+  if (!desktop?.window) {
+    const st = await desktop?.install?.state().catch(() => 'unavailable');
+    if (st === 'available') {
+      $('installBtn').classList.remove('hidden');
+      $('installBtn').onclick = async () => { const r = await desktop.install.request().catch(() => 'failed'); if (r === 'installed') showExchange('', 'yay! find me in your apps~'); };
+      showExchange('', "hi hi! i'm inky~ tap ⋯ below to put me on your desktop.");
+    }
+    $('setupNote').classList.add('hidden');
+    return;
+  }
+  document.body.classList.add('app');
+  $('moveRow').classList.remove('hidden');
+  if (desktop.childProcess) { $('findBotsRow').classList.remove('hidden'); findLocalBots(true); }
+  appIcon().then(png => desktop.app.dock.setIcon(png)).catch(() => {});
+  const st = await desktop.permissions.state().catch(() => ({}));
+  await enableExtras(st);
+  const need = ['overlay', 'menu-bar', 'notifications', 'shortcuts'].filter(p => st[p] === 'prompt');
+  if (need.length) { $('setupBtn').classList.remove('hidden'); if (!store.get('greeted', false)) { showExchange('', "i live here now! tap ⋯ then 'set me up' so i can float, sit in your menu bar and ping you~"); store.set('greeted', true); } }
+  if (['overlay', 'menu-bar', 'notifications', 'shortcuts'].some(p => st[p] === 'denied')) $('manageBtn').classList.remove('hidden');
+  if (st.overlay === 'granted') await goFloat();
+  else await desktop.window.setOptions(WINDOWED).catch(() => {});
+  $('setupBtn').onclick = async () => {
+    try {
+      const r = await desktop.permissions.request(['overlay', 'menu-bar', 'notifications', 'shortcuts']);
+      await enableExtras(r);
+      $('setupBtn').classList.add('hidden');
+      if (Object.values(r).includes('denied')) $('manageBtn').classList.remove('hidden');
+      if (r.overlay === 'granted') goFloat(); else showExchange('', "okay! i'll stay in my cozy window~");
+      setTimeout(() => setFolded(true), 2500);
+    } catch (e) { console.warn(e); }
+  };
+  $('manageBtn').onclick = () => desktop.permissions.manage().catch(() => {});
+})();
+$('hideBtn').onclick = () => desktop?.window.hide().catch(() => {});
+/* ---------- 3D Inky (three.js) ---------- */
+var o3 = null;
+function makeOcto3D() {
+  if (!window.THREE) return null;
+  const T = THREE;
+  const cv = $('octo3d');
+  let renderer;
+  try { renderer = new T.WebGLRenderer({ canvas: cv, alpha: true, antialias: true, preserveDrawingBuffer: true }); }
+  catch (e) { return null; }
+  const SIZE = 170;
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(SIZE, SIZE, false);
+  renderer.setClearColor(0x000000, 0);
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(30, 1, .1, 50);
+  camera.position.set(0, .55, 8.6); camera.lookAt(0, .05, 0);
+  scene.add(new T.HemisphereLight(0xffffff, 0xf2b8a6, .5));
+  const sun = new T.DirectionalLight(0xffffff, .5); sun.position.set(2.5, 3.5, 4); scene.add(sun);
+  const rim = new T.DirectionalLight(0xffe6f0, .22); rim.position.set(-3, 1, -3); scene.add(rim);
+
+  // soft toon shading
+  const gm = new T.DataTexture(new Uint8Array([95, 150, 200, 235]), 4, 1, T.LuminanceFormat);
+  gm.minFilter = gm.magFilter = T.NearestFilter; gm.needsUpdate = true;
+  const toon = (c) => new T.MeshToonMaterial({ color: c, gradientMap: gm });
+  const flat = (c, o) => new T.MeshBasicMaterial({ color: c, transparent: o != null, opacity: o == null ? 1 : o });
+  const BODY = new T.Color('#F4A38A'), TENT = new T.Color('#EE9076');
+  const mBody = toon(BODY.clone()), mTent = toon(TENT.clone()), mSpot = toon('#E2826A');
+  const mInk = flat('#3b2a26'), mWhite = flat('#ffffff'), mCheek = flat('#FF7A9A', .55), mMouth = flat('#8a3b35'), mHeart = flat('#E8456B');
+  const mLeaf = toon('#94CC8F'), mStem = toon('#7FB77E'), mPetal = toon('#FFB3C7'), mPollen = toon('#FFD66B');
+
+  // shadow
+  const sc = document.createElement('canvas'); sc.width = sc.height = 64;
+  const sg = sc.getContext('2d'), grd = sg.createRadialGradient(32, 32, 2, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(150,70,50,.35)'); grd.addColorStop(1, 'rgba(150,70,50,0)'); sg.fillStyle = grd; sg.fillRect(0, 0, 64, 64);
+  const shadow = new T.Mesh(new T.PlaneGeometry(3, 3), new T.MeshBasicMaterial({ map: new T.CanvasTexture(sc), transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = -1.55; scene.add(shadow);
+
+  const spinG = new T.Group(); scene.add(spinG);     // drag rotation
+  const animG = new T.Group(); spinG.add(animG);      // reactions, bob, breathing
+  const HC = new T.Vector3(0, .35, 0), HR = new T.Vector3(1, .92, .95);
+  const head = new T.Mesh(new T.SphereGeometry(1, 48, 32), mBody);
+  head.scale.copy(HR); head.position.copy(HC); animG.add(head);
+  // skirt so tentacles blend into the head
+  const skirt = new T.Mesh(new T.SphereGeometry(.78, 32, 16), mBody);
+  skirt.scale.set(1, .55, 1); skirt.position.set(0, -.18, 0); animG.add(skirt);
+
+  // place something on the head's surface, facing outward
+  const Z = new T.Vector3(0, 0, 1);
+  function onHead(obj, x, y, lift = .01, back = false) {
+    const zz = Math.sqrt(Math.max(0, 1 - (x / HR.x) ** 2 - (y / HR.y) ** 2)) * HR.z * (back ? -1 : 1);
+    const n = new T.Vector3(x / HR.x ** 2, y / HR.y ** 2, zz / HR.z ** 2).normalize();
+    obj.position.set(x, HC.y + y, zz).addScaledVector(n, lift);
+    obj.quaternion.setFromUnitVectors(Z, n);
+    animG.add(obj); return obj;
+  }
+  const sphere = new T.SphereGeometry(1, 24, 16);
+  const disc = (r, m) => new T.Mesh(new T.CircleGeometry(r, 32), m);
+  const arc = (r, tube, m, flip) => { const g = new T.Mesh(new T.TorusGeometry(r, tube, 10, 28, Math.PI), m); if (flip) g.rotation.z = Math.PI; return g; };
+  const heartGeo = (() => {
+    const s = new T.Shape(); s.moveTo(0, -.9);
+    s.bezierCurveTo(-1.2, -.1, -1.1, .9, -.5, .9); s.bezierCurveTo(-.15, .9, 0, .6, 0, .45);
+    s.bezierCurveTo(0, .6, .15, .9, .5, .9); s.bezierCurveTo(1.1, .9, 1.2, -.1, 0, -.9);
+    return new T.ExtrudeGeometry(s, { depth: .25, bevelEnabled: true, bevelSize: .12, bevelThickness: .12, bevelSegments: 3 });
+  })();
+
+  // eyes: one group per side, with a variant for each look
+  const variants = {}; // name -> [objects]
+  const addV = (name, obj) => { (variants[name] = variants[name] || []).push(obj); return obj; };
+  const eyes = [];
+  [-1, 1].forEach((side) => {
+    const eye = new T.Group(); onHead(eye, .34 * side, -.02, .02); eyes.push(eye);
+    const blinkG = new T.Group(); eye.add(blinkG); eye.userData.blink = blinkG;
+    const normal = new T.Group();
+    const ball = new T.Mesh(sphere, mInk); ball.scale.set(.13, .16, .07); normal.add(ball);
+    const hl = new T.Mesh(sphere, mWhite); hl.scale.setScalar(.045); hl.position.set(.04, .06, .06); normal.add(hl);
+    const hl2 = new T.Mesh(sphere, mWhite); hl2.scale.setScalar(.02); hl2.position.set(-.04, -.06, .06); normal.add(hl2);
+    blinkG.add(addV('eyesNormal', normal));
+    const big = new T.Group();
+    const bb = new T.Mesh(sphere, mInk); bb.scale.set(.18, .18, .07); big.add(bb);
+    const bh = new T.Mesh(sphere, mWhite); bh.scale.setScalar(.055); bh.position.set(.06, .07, .06); big.add(bh);
+    blinkG.add(addV('eyesBig', big));
+    eye.add(addV('eyesHappy', arc(.1, .026, mInk)));
+    const sl = arc(.1, .024, mInk, true); sl.position.y = .04; eye.add(addV('eyesClosed', sl));
+    const ht = new T.Mesh(heartGeo, mHeart); ht.scale.setScalar(.12); ht.position.z = -.02; eye.add(addV('eyesLove', ht));
+    const brow = new T.Mesh(new T.CylinderGeometry(.018, .018, .17, 8), mInk);
+    brow.rotation.z = Math.PI / 2 + .3 * side; brow.position.set(-.01 * side, .24, .02); eye.add(addV('brows', brow));
+  });
+  // mouth
+  const mouth = new T.Group(); onHead(mouth, 0, -.26, .02);
+  mouth.add(addV('mSmile', arc(.075, .022, mInk, true)));
+  const open = new T.Group();
+  const om = new T.Mesh(new T.CircleGeometry(.11, 24, Math.PI, Math.PI), mMouth); open.add(om);
+  const oline = new T.Mesh(new T.CylinderGeometry(.018, .018, .22, 8), mInk); oline.rotation.z = Math.PI / 2; open.add(oline);
+  open.position.y = .02; mouth.add(addV('mOpen', open));
+  const oh = disc(.045, mInk); mouth.add(addV('mO', oh));
+  const wob = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([[-.09, -.02], [-.045, .02], [0, -.02], [.045, .02], [.09, -.02]].map(([x, y]) => new T.Vector3(x, y, 0))), 24, .018, 8), mInk);
+  mouth.add(addV('mWobble', wob));
+  const flatM = new T.Mesh(new T.CylinderGeometry(.018, .018, .12, 8), mInk); flatM.rotation.z = Math.PI / 2 - .15; mouth.add(addV('mFlat', flatM));
+  // cheeks
+  const cheeks = [-1, 1].map(side => { const c = disc(.12, mCheek); c.scale.y = .6; return onHead(c, .62 * side, -.17, .015); });
+  // spots on the back
+  [[.3, .2, .13], [-.35, 0, .17], [.05, -.32, .1], [-.1, .45, .09], [.52, -.2, .08], [-.6, .3, .07]].forEach(([x, y, r]) => {
+    const s = new T.Mesh(sphere, mSpot); s.scale.set(r, r, .02); onHead(s, x, y, 0, true);
+  });
+  // sprout + bloom
+  const sprout = new T.Group(); sprout.position.set(0, HC.y + HR.y - .04, 0); animG.add(sprout);
+  const stem = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(0, 0, 0), new T.Vector3(.03, .16, 0), new T.Vector3(-.01, .32, 0)]), 12, .032, 8), mStem);
+  sprout.add(stem);
+  [[-1, '#94CC8F'], [1, '#A6D89F']].forEach(([s]) => {
+    const leaf = new T.Mesh(sphere, mLeaf); leaf.scale.set(.17, .05, .09);
+    leaf.position.set(.14 * s, .34, 0); leaf.rotation.z = -.5 * s; sprout.add(leaf);
+  });
+  const bloom = new T.Group(); bloom.position.set(-.01, .38, .02); sprout.add(bloom);
+  for (let i = 0; i < 5; i++) {
+    const p = new T.Mesh(sphere, mPetal); const a = i / 5 * Math.PI * 2;
+    p.scale.set(.075, .075, .04); p.position.set(Math.cos(a) * .09, Math.sin(a) * .09, 0); bloom.add(p);
+  }
+  const pol = new T.Mesh(sphere, mPollen); pol.scale.set(.06, .06, .05); pol.position.z = .02; bloom.add(pol);
+  bloom.scale.setScalar(0);
+  // time-of-day accessories
+  const acc = {};
+  { // morning: dew drop on a leaf + sparkle
+    const g = new T.Group(); const drop = new T.Mesh(sphere, new T.MeshToonMaterial({ color: '#BFE3FF', gradientMap: gm, transparent: true, opacity: .9 }));
+    drop.scale.set(.05, .065, .05); drop.position.set(.2, .39, .04); g.add(drop); sprout.add(g); acc.morning = g;
+  }
+  { // afternoon: sunglasses pushed up on the head
+    const g = new T.Group(); const mGl = toon('#3b2a26'), mLens = new T.MeshToonMaterial({ color: '#4a3b6b', gradientMap: gm });
+    [-1, 1].forEach(s => { const l = new T.Mesh(sphere, mLens); l.scale.set(.17, .12, .035); l.position.x = .22 * s; g.add(l); });
+    const br = new T.Mesh(new T.CylinderGeometry(.02, .02, .16, 8), mGl); br.rotation.z = Math.PI / 2; br.position.y = .03; g.add(br);
+    onHead(g, 0, .5, .03); acc.afternoon = g;
+  }
+  { // evening + night: cozy scarf
+    const g = new T.Group(); const mScarf = toon('#8EC5F2');
+    const ring = new T.Mesh(new T.TorusGeometry(.74, .1, 12, 48), mScarf); ring.rotation.x = Math.PI / 2; ring.position.y = -.3; g.add(ring);
+    const tail = new T.Mesh(new T.BoxGeometry(.18, .42, .07), mScarf); tail.position.set(.38, -.55, .66); tail.rotation.set(.25, -.4, .25); g.add(tail);
+    const stripe = new T.Mesh(new T.BoxGeometry(.19, .05, .075), toon('#ffffff')); stripe.position.set(.38, -.66, .68); stripe.rotation.copy(tail.rotation); g.add(stripe);
+    animG.add(g); acc.scarf = g;
+  }
+  { // night: sleepy nightcap
+    const g = new T.Group(); const mCap = toon('#7B83D4');
+    const cone = new T.Mesh(new T.ConeGeometry(.5, 1.05, 32, 1, true), mCap); cone.position.y = .5; g.add(cone);
+    const band = new T.Mesh(new T.TorusGeometry(.5, .07, 10, 40), toon('#ffffff')); band.rotation.x = Math.PI / 2; g.add(band);
+    const pom = new T.Mesh(sphere, toon('#ffffff')); pom.scale.setScalar(.12); pom.position.y = 1.05; g.add(pom);
+    g.position.set(-.3, 1.0, 0); g.rotation.z = .55; animG.add(g); acc.night = g;
+  }
+  function setTime3(p) {
+    acc.morning.visible = p === 'morning';
+    acc.afternoon.visible = p === 'afternoon';
+    acc.scarf.visible = p === 'evening' || p === 'night' || p === 'sleep';
+    acc.night.visible = p === 'sleep';
+  }
+  setTime3('afternoon');
+  // eight tentacles made of overlapping beads
+  const N = 24, tents = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    const g = new T.Group(); g.rotation.y = a; animG.add(g);
+    const beads = [];
+    for (let k = 0; k < N; k++) { const b = new T.Mesh(sphere, mTent); g.add(b); beads.push(b); }
+    tents.push({ g, beads, a, phase: i * .85 });
+  }
+  function layTentacles(time, amp, spd) {
+    tents.forEach((tn) => {
+      let x = .55, y = -.28, th0 = -1.38;
+      tn.g.rotation.y = tn.a + .06 * Math.sin(time * spd * .7 + tn.phase);
+      for (let k = 0; k < N; k++) {
+        const t = k / (N - 1);
+        const th = th0 + 2.75 * t * t + amp * Math.sin(time * spd + tn.phase + t * 2.6) * t;
+        const r = .19 * Math.pow(1 - t, .8) + .05;
+        const b = tn.beads[k]; b.position.set(0, y, x); b.scale.setScalar(r);
+        x += Math.cos(th) * .056; y += Math.sin(th) * .056;
+      }
+    });
+  }
+  // after the loop the bead path runs along +z in each group's frame; rotating the group spreads them around
+
+  /* state */
+  let moodNow = 'happy', react = null, blinkAt = performance.now() + 3000, blinkUntil = 0;
+  let spinRY = 0, spinRX = 0;
+  const breath = { cur: new T.Vector3(1, 1, 1), target: new T.Vector3(1, 1, 1), tau: .6 };
+  const SHOW = {
+    eyesNormal: ['neutral', 'excited', 'thinking', 'sad'], eyesBig: ['surprised'], eyesHappy: ['happy'], eyesClosed: ['sleepy', 'calm'],
+    eyesLove: ['love'], brows: ['sad'], mSmile: ['neutral', 'love', 'calm'], mOpen: ['happy', 'excited'], mWobble: ['sad'], mO: ['surprised', 'sleepy'], mFlat: ['thinking'],
+  };
+  function setMood3(m) {
+    moodNow = m;
+    Object.entries(variants).forEach(([k, objs]) => objs.forEach(o => { o.visible = SHOW[k].includes(m); }));
+  }
+  setMood3('happy');
+
+  const DUR = { 'r-squish': .5, 'r-jump': .75, 'r-spin': .85, 'r-flip': .9, 'r-wiggle': .65, 'r-grow': 1, 'r-shy': 1.4, 'r-rainbow': 1.6, 'r-frenzy': 1.2,
+    'r-ink': .75, 'r-peek': 1.3, 'r-dance': 1.6, 'r-dizzy': 1.8, 'r-bloom': 3, 'r-gold': 2.2, 'r-bubbles': .6, 'r-love': 1.4 };
+  function react3(cls) {
+    const names = cls.split(' ').filter(c => DUR[c]);
+    if (!names.length) return;
+    react = { names, t0: performance.now(), dur: Math.max(...names.map(n => DUR[n])) };
+  }
+  const ease = (k) => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+  const hump = (k) => Math.sin(Math.PI * Math.min(1, Math.max(0, k)));
+  const GOLD = new T.Color('#F5C542');
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    const time = now / 1000;
+    const calmOn = document.body.classList.contains('calm');
+    const talking = octo.classList.contains('talking'), focusing = octo.classList.contains('focusing');
+    let amp = .32, spd = 2.3, bobA = .06, bobS = 2.1;
+    if (moodNow === 'sleepy' || calmOn || focusing) { amp = .22; spd = 1; bobA = .07; bobS = .9; }
+    if (moodNow === 'excited' && !calmOn) { bobA = .16; bobS = 11; }
+    if (talking) { bobA = .07; bobS = 13; }
+    // reaction values
+    let px = 0, py = 0, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0, hue = 0, gold = 0, bl = 0, cheek = 1;
+    if (react) {
+      const el = (now - react.t0) / 1000, k = Math.min(1, el / react.dur);
+      react.names.forEach((n) => {
+        const kk = Math.min(1, el / DUR[n]);
+        switch (n) {
+          case 'r-squish': { const w = Math.sin(kk * Math.PI * 2.5) * (1 - kk) * .18; sx += w; sz += w; sy -= w; break; }
+          case 'r-bubbles': { const w = Math.sin(kk * Math.PI * 2) * (1 - kk) * .1; sx += w; sy -= w; py += hump(kk) * .15; break; }
+          case 'r-jump': py += hump(kk) * 1.0; { const sq = kk < .15 ? hump(kk / .15) * .14 : kk > .8 ? hump((kk - .8) / .2) * .14 : 0; sx += sq; sz += sq; sy -= sq; } break;
+          case 'r-spin': ry += ease(kk) * Math.PI * 2; break;
+          case 'r-flip': rx -= ease(kk) * Math.PI * 2; py += hump(kk) * .7; break;
+          case 'r-wiggle': rz += Math.sin(kk * Math.PI * 4) * (1 - kk) * .3; break;
+          case 'r-grow': { const g = kk < .3 ? ease(kk / .3) : kk > .7 ? 1 - ease((kk - .7) / .3) : 1; sx += g * .3; sy += g * .3; sz += g * .3; break; }
+          case 'r-shy': { const g = hump(kk); sy -= g * .14; sx -= g * .06; ry += g * .5; cheek += g * .7; break; }
+          case 'r-love': cheek += hump(kk) * .6; break;
+          case 'r-rainbow': hue += kk; break;
+          case 'r-frenzy': amp = .75; spd = 11; rz += Math.sin(kk * Math.PI * 8) * (1 - kk) * .15; break;
+          case 'r-ink': py += (kk < .25 ? -hump(kk / .25) * .15 : hump((kk - .25) / .75) * .45); break;
+          case 'r-peek': { const g = kk < .3 ? ease(kk / .3) : kk < .6 ? 1 : 1 - ease((kk - .6) / .4); py -= g * 1.6; sx -= g * .35; sy -= g * .55; sz -= g * .35; break; }
+          case 'r-dance': rz += Math.sin(kk * Math.PI * 4) * .22; ry += Math.sin(kk * Math.PI * 2) * .6; py += Math.abs(Math.sin(kk * Math.PI * 4)) * .25; break;
+          case 'r-dizzy': rz += Math.sin(kk * Math.PI * 5) * (1 - kk) * .35; ry += Math.sin(kk * Math.PI * 3) * (1 - kk) * .8; break;
+          case 'r-bloom': bl = kk < .2 ? ease(kk / .2) * 1.2 : kk < .85 ? 1 : 1 - ease((kk - .85) / .15); { const g = hump(Math.min(1, kk * 3)) * .15; sx += g; sy += g; sz += g; } break;
+          case 'r-gold': gold = kk < .2 ? ease(kk / .2) : kk > .75 ? 1 - ease((kk - .75) / .25) : 1; ry += ease(Math.min(1, kk / .45)) * Math.PI * 2; break;
+        }
+      });
+      if (k >= 1) react = null;
+    }
+    // breathing (calm) eases toward its target
+    breath.cur.lerp(breath.target, 1 - Math.exp(-dt / breath.tau));
+    const bob = Math.sin(time * bobS) * bobA;
+    animG.position.set(px, py + bob, 0);
+    animG.scale.set(sx * breath.cur.x, sy * breath.cur.y, sz * breath.cur.x);
+    const sway = calmOn ? Math.sin(time * .9) * .05 : 0;
+    // look toward the cursor
+    const lx = (typeof lookX === 'number' ? lookX : 0), ly = (typeof lookY === 'number' ? lookY : 0);
+    animG.rotation.set(rx + ly * .045, ry + lx * .07 + sway, rz + sway * .6);
+    spinG.rotation.set(spinRX, spinRY, 0);
+    eyes.forEach(e => { e.userData.blink.position.set(lx * .012, (moodNow === 'thinking' ? .035 : -ly * .012), 0); });
+    // blink
+    if (now > blinkAt) { blinkUntil = now + 130; blinkAt = now + 2800 + Math.random() * 3200; }
+    const bs = now < blinkUntil && !calmOn ? .1 : 1;
+    eyes.forEach(e => { e.userData.blink.scale.y = bs; });
+    cheeks.forEach(c => { c.scale.set(cheek, .6 * cheek, 1); });
+    bloom.scale.setScalar(bl);
+    sprout.rotation.z = Math.sin(time * 1.7) * .08;
+    layTentacles(time, amp, spd);
+    // colors
+    if (hue || gold) {
+      const hsl = {}; BODY.getHSL(hsl);
+      mBody.color.setHSL((hsl.h + hue) % 1, hsl.s, hsl.l).lerp(GOLD, gold);
+      TENT.getHSL(hsl); mTent.color.setHSL((hsl.h + hue) % 1, hsl.s, hsl.l).lerp(GOLD, gold);
+      mBody.emissive.setRGB(gold * .25, gold * .18, 0);
+    } else if (!mBody.color.equals(BODY)) { mBody.color.copy(BODY); mTent.color.copy(TENT); mBody.emissive.setRGB(0, 0, 0); }
+    shadow.scale.setScalar(1 - Math.min(.5, Math.max(0, py + bob) * .35));
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  document.body.classList.add('has3d');
+  return {
+    setMood: setMood3,
+    setTime: setTime3,
+    react: react3,
+    spin(ry, rx) { spinRY = ry * Math.PI / 180; spinRX = rx * Math.PI / 180; },
+    breathe(sx, sy, secs) { breath.target.set(sx, sy, sx); breath.tau = Math.max(.2, secs / 3); },
+    icon() {
+      renderer.render(scene, camera);
+      const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+      const bg = g.createLinearGradient(0, 0, 0, 256); bg.addColorStop(0, '#FFF4EC'); bg.addColorStop(1, '#F9CDBB');
+      g.fillStyle = bg; g.beginPath(); g.roundRect ? g.roundRect(8, 8, 240, 240, 56) : g.rect(8, 8, 240, 240); g.fill();
+      g.drawImage(cv, 18, 14, 220, 220);
+      return c.toDataURL('image/png');
+    },
+  };
+}
+try { o3 = makeOcto3D(); } catch (e) { console.warn('3D unavailable', e); o3 = null; }
+if (o3) { o3.setMood(mood); o3.setTime(period || 'afternoon'); }
+</script>
+</body>
+</html>
